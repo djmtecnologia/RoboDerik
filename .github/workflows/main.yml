@@ -1,0 +1,38 @@
+name: RoboDerik Simulator
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Roda a cada 30 minutos
+  workflow_dispatch:      # Permite rodar manualmente no botão
+
+permissions:
+  contents: write         # PERMISSÃO CRÍTICA PARA SALVAR O CSV
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código do repositório
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar bibliotecas
+        run: |
+          pip install -r requirements.txt
+
+      - name: Rodar Robô Simulado
+        env:
+          CG_API_KEY: ${{ secrets.CG_API_KEY }}
+        run: python bot.py
+
+      - name: Salvar Planilha (Commit)
+        run: |
+          git config --global user.name "RoboDerik Bot"
+          git config --global user.email "bot@github.com"
+          git add trades.csv
+          git commit -m "📊 Atualizando Planilha de Trades" || echo "Nada para atualizar"
+          git push
