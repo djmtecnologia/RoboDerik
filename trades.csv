@@ -1,3 +1,4 @@
 id,data_entrada,symbol,tipo,preco_entrada,stop_loss,take_profit,status,resultado,data_saida,preco_saida,lucro_pct,motivo
 b40e2cc9,2026-02-10 19:57,BNB,LONG,616.74,607.4889,635.2422,ABERTO,EM_ANDAMENTO,,0.0,0.0,RSI Baixo (30)
 40a8bf0a,2026-02-10 19:57,SOL,LONG,83.17,81.92245,85.66510000000001,ABERTO,EM_ANDAMENTO,,0.0,0.0,RSI Baixo (29)
+1dc77753,2026-02-10 22:25,XRP,LONG,1.4,1.379,1.442,ABERTO,EM_ANDAMENTO,,0.0,0.0,RSI Baixo (32)
