@@ -67,6 +67,8 @@ def get_technicals(coin_id):
         return df["rsi"].iloc[-1], adx["ADX_14"].iloc[-1]
     except: return 50, 0
 
+# ... (mantenha o resto do código igual até chegar na função run_bot) ...
+
 def run_bot():
     print("🚀 INICIANDO SIMULAÇÃO ROBODERIK...")
     
@@ -74,54 +76,68 @@ def run_bot():
     df = load_trades()
     market_data = get_market_data()
     news_score = get_news_sentiment()
-    print(f"📰 Sentimento Notícias: {news_score:.2f}")
+    
+    print(f"\n📰 SENTIMENTO DAS NOTÍCIAS: {news_score:.2f}")
+    if news_score > 0.1: print("   -> Otimismo moderado no ar.")
+    elif news_score < -0.1: print("   -> Pessimismo/Medo no ar.")
+    else: print("   -> Mercado neutro de notícias.")
 
     if not market_data:
         print("❌ Sem dados de mercado. Abortando.")
         return
 
-    # 2. Monitorar Posições Abertas (Saída)
+    # 2. Monitorar Posições Abertas (Se houver)
     open_trades = df[df['status'] == 'ABERTO']
-    for index, trade in open_trades.iterrows():
-        symbol = trade['symbol']
-        current_data = next((item for item in market_data if item['symbol'].upper() == symbol), None)
-        
-        if current_data:
-            curr_price = current_data['current_price']
-            print(f"🔍 Monitorando {symbol}: Entrada ${trade['preco_entrada']} | Atual ${curr_price}")
+    if not open_trades.empty:
+        print(f"\n🔎 MONITORANDO {len(open_trades)} POSIÇÕES ABERTAS:")
+        for index, trade in open_trades.iterrows():
+            symbol = trade['symbol']
+            current_data = next((item for item in market_data if item['symbol'].upper() == symbol), None)
             
-            # Checa Gain
-            if curr_price >= trade['take_profit']:
-                print(f"✅ WIN em {symbol}!")
-                df.at[index, 'status'] = 'FECHADO'
-                df.at[index, 'resultado'] = 'WIN'
-                df.at[index, 'preco_saida'] = curr_price
-                df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
-                df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            
-            # Checa Loss
-            elif curr_price <= trade['stop_loss']:
-                print(f"❌ LOSS em {symbol}...")
-                df.at[index, 'status'] = 'FECHADO'
-                df.at[index, 'resultado'] = 'LOSS'
-                df.at[index, 'preco_saida'] = curr_price
-                df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
-                df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+            if current_data:
+                curr_price = current_data['current_price']
+                print(f"   -> {symbol}: Entrada ${trade['preco_entrada']} | Atual ${curr_price}")
+                
+                # Lógica de Saída (TP/SL) aqui...
+                if curr_price >= trade['take_profit']:
+                    print(f"   ✅ WIN em {symbol}!")
+                    df.at[index, 'status'] = 'FECHADO'
+                    df.at[index, 'resultado'] = 'WIN'
+                    df.at[index, 'preco_saida'] = curr_price
+                    df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
+                    df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                elif curr_price <= trade['stop_loss']:
+                    print(f"   ❌ LOSS em {symbol}...")
+                    df.at[index, 'status'] = 'FECHADO'
+                    df.at[index, 'resultado'] = 'LOSS'
+                    df.at[index, 'preco_saida'] = curr_price
+                    df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
+                    df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    else:
+        print("\n💤 Nenhuma posição aberta para monitorar.")
 
-    # 3. Procurar Novas Entradas
+    # 3. Procurar Novas Entradas (Scanner de Mercado)
+    print("\n📡 ESCANEANDO MERCADO AGORA:")
     for coin in market_data:
         symbol = coin['symbol'].upper()
-        # Evita abrir duplicado
+        
+        # Pula se já estiver comprado
         if not df[(df['symbol'] == symbol) & (df['status'] == 'ABERTO')].empty:
             continue
 
         price = coin['current_price']
         rsi, adx = get_technicals(coin['id'])
         
-        # --- ESTRATÉGIA DE ENTRADA ---
-        # RSI Baixo (<35) + Tendência Forte (>25) + Notícia não desastrosa (>-0.2)
+        # IMPRIME O DIAGNÓSTICO (Aqui você vê ele trabalhando!)
+        status_msg = "AGUARDAR"
+        if rsi < 35: status_msg = "INTERESSANTE (Barato)"
+        elif rsi > 70: status_msg = "CARO (Sobrecomprado)"
+        
+        print(f"   🪙 {symbol:<4} (${price:<8}): RSI {rsi:.1f} | ADX {adx:.1f} -> {status_msg}")
+        
+        # ESTRATÉGIA REAL
         if rsi < 35 and adx > 25 and news_score > -0.2:
-            print(f"🆕 ABRINDO COMPRA EM {symbol} (RSI {rsi:.0f})")
+            print(f"      🎯 SINAL ENCONTRADO! Comprando {symbol}...")
             tp = price * (1 + TAKE_PROFIT_PCT)
             sl = price * (1 - STOP_LOSS_PCT)
             
@@ -139,7 +155,7 @@ def run_bot():
                 "preco_saida": 0.0,
                 "lucro_pct": 0.0
             }
-            # Adiciona nova linha
+            # Adiciona nova linha (método compatível atualizado)
             df = pd.concat([df, pd.DataFrame([new_trade])], ignore_index=True)
 
     # 4. Salvar
