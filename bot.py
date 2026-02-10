@@ -13,9 +13,13 @@ BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"accept": "application/json", "x-cg-demo-api-key": API_KEY}
 CSV_FILE = "trades.csv"
 
-# Estratégia de Simulação
-TAKE_PROFIT_PCT = 0.03  # Alvo: 3%
-STOP_LOSS_PCT = 0.015   # Stop: 1.5%
+# Configuração de Risco
+TAKE_PROFIT_PCT = 0.03    # Alvo: 3%
+STOP_LOSS_PCT = 0.015     # Stop: 1.5%
+GRID_RANGE_PCT = 0.04     # Grid: 4%
+
+# Definição de Notícia Bombástica (Impacto > 0.5)
+IMPACTO_BOMBASTICO = 0.5 
 
 RSS_FEEDS = [
     "https://cointelegraph.com/rss",
@@ -24,38 +28,54 @@ RSS_FEEDS = [
 
 COINS = ["bitcoin", "ethereum", "solana", "ripple", "binancecoin"]
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES AUXILIARES ---
 
 def load_trades():
     if os.path.exists(CSV_FILE):
         return pd.read_csv(CSV_FILE)
     else:
-        columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_pct"]
+        # Colunas padronizadas
+        columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_pct", "motivo"]
         return pd.DataFrame(columns=columns)
 
 def save_trades(df):
     df.to_csv(CSV_FILE, index=False)
-    print("💾 Planilha trades.csv atualizada com sucesso!")
+    print("💾 Planilha salva.")
 
-def get_news_sentiment():
+def analyze_news_impact():
     try:
         analyzer = SentimentIntensityAnalyzer()
-        total = 0; count = 0
+        total_score = 0; count = 0; max_impact = 0; top_headline = ""
+        
+        print("\n📰 ANALISANDO NOTÍCIAS...")
         for url in RSS_FEEDS:
             feed = feedparser.parse(url)
             for entry in feed.entries[:3]:
                 score = analyzer.polarity_scores(entry.title)['compound']
-                total += score; count += 1
-        return total / count if count > 0 else 0
-    except: return 0
+                total_score += score
+                count += 1
+                
+                impact = abs(score)
+                if impact > max_impact:
+                    max_impact = impact; top_headline = entry.title
+                
+                # Ícones de log
+                emoji = "😐"
+                if score > 0.3: emoji = "🟢"
+                elif score < -0.3: emoji = "🔴"
+                if impact > IMPACTO_BOMBASTICO: emoji = "💣"
+                print(f"   {emoji} [{score:.2f}] {entry.title[:50]}...")
+
+        avg_score = total_score / count if count > 0 else 0
+        has_bombastic = max_impact >= IMPACTO_BOMBASTICO
+        return avg_score, has_bombastic, top_headline
+    except: return 0, False, ""
 
 def get_market_data():
     try:
         params = {"vs_currency": "usd", "ids": ",".join(COINS), "sparkline": "false"}
         return requests.get(f"{BASE_URL}/coins/markets", headers=HEADERS, params=params).json()
-    except Exception as e:
-        print(f"Erro API: {e}")
-        return []
+    except: return []
 
 def get_technicals(coin_id):
     try:
@@ -67,85 +87,115 @@ def get_technicals(coin_id):
         return df["rsi"].iloc[-1], adx["ADX_14"].iloc[-1]
     except: return 50, 0
 
-# ... (mantenha o resto do código igual até chegar na função run_bot) ...
+# --- LÓGICA PRINCIPAL ---
 
 def run_bot():
-    print("🚀 INICIANDO SIMULAÇÃO ROBODERIK...")
+    print("🚀 ROBODERIK V4 (LONG + SHORT + GRID)...")
     
-    # 1. Carregar dados
     df = load_trades()
     market_data = get_market_data()
-    news_score = get_news_sentiment()
+    avg_score, has_bombastic, top_headline = analyze_news_impact()
     
-    print(f"\n📰 SENTIMENTO DAS NOTÍCIAS: {news_score:.2f}")
-    if news_score > 0.1: print("   -> Otimismo moderado no ar.")
-    elif news_score < -0.1: print("   -> Pessimismo/Medo no ar.")
-    else: print("   -> Mercado neutro de notícias.")
+    print(f"\n📊 SENTIMENTO MÉDIO: {avg_score:.2f}")
+    if has_bombastic:
+        print(f"🚫 ALERTA 💣: {top_headline}")
+        print("   🔒 GRID NEUTRO BLOQUEADO.")
 
-    if not market_data:
-        print("❌ Sem dados de mercado. Abortando.")
-        return
+    if not market_data: return
 
-    # 2. Monitorar Posições Abertas (Se houver)
+    # 1. GERENCIAR POSIÇÕES ABERTAS
     open_trades = df[df['status'] == 'ABERTO']
     if not open_trades.empty:
-        print(f"\n🔎 MONITORANDO {len(open_trades)} POSIÇÕES ABERTAS:")
+        print(f"\n🔎 GERENCIANDO POSIÇÕES:")
         for index, trade in open_trades.iterrows():
             symbol = trade['symbol']
-            current_data = next((item for item in market_data if item['symbol'].upper() == symbol), None)
+            curr_data = next((item for item in market_data if item['symbol'].upper() == symbol), None)
             
-            if current_data:
-                curr_price = current_data['current_price']
-                print(f"   -> {symbol}: Entrada ${trade['preco_entrada']} | Atual ${curr_price}")
+            if curr_data:
+                curr_price = curr_data['current_price']
+                print(f"   -> {symbol} ({trade['tipo']}): Entrada ${trade['preco_entrada']} | Atual ${curr_price}")
                 
-                # Lógica de Saída (TP/SL) aqui...
-                if curr_price >= trade['take_profit']:
-                    print(f"   ✅ WIN em {symbol}!")
-                    df.at[index, 'status'] = 'FECHADO'
-                    df.at[index, 'resultado'] = 'WIN'
-                    df.at[index, 'preco_saida'] = curr_price
-                    df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
-                    df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                elif curr_price <= trade['stop_loss']:
-                    print(f"   ❌ LOSS em {symbol}...")
-                    df.at[index, 'status'] = 'FECHADO'
-                    df.at[index, 'resultado'] = 'LOSS'
-                    df.at[index, 'preco_saida'] = curr_price
-                    df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
-                    df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-    else:
-        print("\n💤 Nenhuma posição aberta para monitorar.")
+                # SAÍDA LONG (Compra)
+                if trade['tipo'] == 'LONG':
+                    if curr_price >= trade['take_profit']:
+                        df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'WIN'
+                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
+                        print(f"      ✅ WIN (Long)!")
+                    elif curr_price <= trade['stop_loss']:
+                        df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'LOSS'
+                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
+                        print(f"      ❌ LOSS (Long)...")
 
-    # 3. Procurar Novas Entradas (Scanner de Mercado)
-    print("\n📡 ESCANEANDO MERCADO AGORA:")
+                # SAÍDA SHORT (Venda) - A lógica inverte!
+                # Ganha se o preço cair (<= TP). Perde se subir (>= SL).
+                elif trade['tipo'] == 'SHORT':
+                    if curr_price <= trade['take_profit']:
+                        df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'WIN'
+                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
+                        print(f"      ✅ WIN (Short)!")
+                    elif curr_price >= trade['stop_loss']:
+                        df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'LOSS'
+                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
+                        print(f"      ❌ LOSS (Short)...")
+
+                # SAÍDA NEUTRO (Grid)
+                elif trade['tipo'] == 'NEUTRO':
+                    if curr_price >= trade['take_profit'] or curr_price <= trade['stop_loss']:
+                        df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'BREAKOUT'
+                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = 0.0
+                        print(f"      ⚠️ GRID ESTOURADO")
+
+    # 2. ESCANEAR OPORTUNIDADES
+    print("\n📡 ESCANEANDO OPORTUNIDADES:")
     for coin in market_data:
         symbol = coin['symbol'].upper()
-        
-        # Pula se já estiver comprado
-        if not df[(df['symbol'] == symbol) & (df['status'] == 'ABERTO')].empty:
-            continue
+        if not df[(df['symbol'] == symbol) & (df['status'] == 'ABERTO')].empty: continue
 
         price = coin['current_price']
         rsi, adx = get_technicals(coin['id'])
         
-        # IMPRIME O DIAGNÓSTICO (Aqui você vê ele trabalhando!)
         status_msg = "AGUARDAR"
-        if rsi < 35: status_msg = "INTERESSANTE (Barato)"
-        elif rsi > 70: status_msg = "CARO (Sobrecomprado)"
+        action = None
+        motivo = ""
         
-        print(f"   🪙 {symbol:<4} (${price:<8}): RSI {rsi:.1f} | ADX {adx:.1f} -> {status_msg}")
-        
-        # ESTRATÉGIA REAL
-        if rsi < 35 and adx > 25 and news_score > -0.2:
-            print(f"      🎯 SINAL ENCONTRADO! Comprando {symbol}...")
+        # --- ESTRATÉGIA 1: LONG (Compra no Fundo) ---
+        if rsi < 35 and adx > 25 and avg_score > -0.2:
+            status_msg = "SINAL LONG 🚀"
+            action = "LONG"
+            motivo = f"RSI Baixo ({rsi:.0f})"
             tp = price * (1 + TAKE_PROFIT_PCT)
             sl = price * (1 - STOP_LOSS_PCT)
-            
+
+        # --- ESTRATÉGIA 2: SHORT (Venda no Topo) ---
+        # RSI > 70 (Caro) + Tendência + Notícias não eufóricas (< 0.2)
+        elif rsi > 70 and adx > 25 and avg_score < 0.2:
+            status_msg = "SINAL SHORT 📉"
+            action = "SHORT"
+            motivo = f"RSI Alto ({rsi:.0f})"
+            # No Short, TP é para baixo e SL é para cima
+            tp = price * (1 - TAKE_PROFIT_PCT)
+            sl = price * (1 + STOP_LOSS_PCT)
+
+        # --- ESTRATÉGIA 3: NEUTRO (Lateral) ---
+        elif adx < 25 and (45 <= rsi <= 55):
+            if not has_bombastic:
+                status_msg = "SINAL GRID NEUTRO 🦀"
+                action = "NEUTRO"
+                motivo = "Lateral + Calmo"
+                tp = price * (1 + GRID_RANGE_PCT)
+                sl = price * (1 - GRID_RANGE_PCT)
+            else:
+                status_msg = "BLOQUEADO (Bomba 💣)"
+
+        print(f"   🪙 {symbol:<4}: RSI {rsi:.1f} | ADX {adx:.1f} -> {status_msg}")
+
+        if action:
+            print(f"      💾 Abrindo {action} em {symbol}...")
             new_trade = {
                 "id": str(uuid.uuid4())[:8],
                 "data_entrada": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "symbol": symbol,
-                "tipo": "LONG",
+                "tipo": action,
                 "preco_entrada": price,
                 "stop_loss": sl,
                 "take_profit": tp,
@@ -153,12 +203,11 @@ def run_bot():
                 "resultado": "EM_ANDAMENTO",
                 "data_saida": "",
                 "preco_saida": 0.0,
-                "lucro_pct": 0.0
+                "lucro_pct": 0.0,
+                "motivo": motivo
             }
-            # Adiciona nova linha (método compatível atualizado)
             df = pd.concat([df, pd.DataFrame([new_trade])], ignore_index=True)
 
-    # 4. Salvar
     save_trades(df)
 
 if __name__ == "__main__":
