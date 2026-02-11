@@ -17,6 +17,8 @@ CSV_FILE = "trades.csv"
 TAKE_PROFIT_PCT = 0.03    # Alvo: 3%
 STOP_LOSS_PCT = 0.015     # Stop: 1.5%
 GRID_RANGE_PCT = 0.04     # Grid: 4%
+# QUANTO DINHEIRO O ROBÔ SIMULA POR TRADE?
+VALOR_APOSTA = 100.0  # Ex: $100 dólares por entrada
 
 # Definição de Notícia Bombástica (Impacto > 0.5)
 IMPACTO_BOMBASTICO = 0.5 
@@ -34,8 +36,8 @@ def load_trades():
     if os.path.exists(CSV_FILE):
         return pd.read_csv(CSV_FILE)
     else:
-        # Colunas padronizadas
-        columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_pct", "motivo"]
+        # Adicionei "lucro_usd" no final
+        columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_pct", "lucro_usd", "motivo"]
         return pd.DataFrame(columns=columns)
 
 def save_trades(df):
@@ -120,11 +122,13 @@ def run_bot():
                     if curr_price >= trade['take_profit']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'WIN'
                         df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
-                        print(f"      ✅ WIN (Long)!")
+                        df.at[index, 'lucro_usd'] = VALOR_APOSTA * TAKE_PROFIT_PCT 
+                        print(f"      ✅ WIN (Long)! +${df.at[index, 'lucro_usd']:.2f}")
                     elif curr_price <= trade['stop_loss']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'LOSS'
                         df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
-                        print(f"      ❌ LOSS (Long)...")
+                        df.at[index, 'lucro_usd'] = VALOR_APOSTA * -STOP_LOSS_PCT
+                        print(f"      ❌ LOSS (Long)... -${abs(df.at[index, 'lucro_usd']):.2f}")
 
                 # SAÍDA SHORT (Venda) - A lógica inverte!
                 # Ganha se o preço cair (<= TP). Perde se subir (>= SL).
@@ -132,18 +136,22 @@ def run_bot():
                     if curr_price <= trade['take_profit']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'WIN'
                         df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
-                        print(f"      ✅ WIN (Short)!")
+                        df.at[index, 'lucro_usd'] = VALOR_APOSTA * TAKE_PROFIT_PCT
+                        print(f"      ✅ WIN (Short)! +${df.at[index, 'lucro_usd']:.2f}")
                     elif curr_price >= trade['stop_loss']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'LOSS'
                         df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
-                        print(f"      ❌ LOSS (Short)...")
+                        df.at[index, 'lucro_usd'] = VALOR_APOSTA * -STOP_LOSS_PCT
+                        print(f"      ❌ LOSS (Short)... -${abs(df.at[index, 'lucro_usd']):.2f}")
 
                 # SAÍDA NEUTRO (Grid)
                 elif trade['tipo'] == 'NEUTRO':
                     if curr_price >= trade['take_profit'] or curr_price <= trade['stop_loss']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'BREAKOUT'
                         df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = 0.0
-                        print(f"      ⚠️ GRID ESTOURADO")
+                        df.at[index, 'lucro_usd'] = 0.0  # <--- Definido como Zero no Breakout
+                        df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        print(f"      ⚠️ GRID ESTOURADO (Saída no 0x0)")
 
     # 2. ESCANEAR OPORTUNIDADES
     print("\n📡 ESCANEANDO OPORTUNIDADES:")
@@ -204,6 +212,7 @@ def run_bot():
                 "data_saida": "",
                 "preco_saida": 0.0,
                 "lucro_pct": 0.0,
+                "lucro_usd": 0.0,
                 "motivo": motivo
             }
             df = pd.concat([df, pd.DataFrame([new_trade])], ignore_index=True)
