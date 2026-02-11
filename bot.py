@@ -33,7 +33,13 @@ COINS = ["bitcoin", "ethereum", "solana", "ripple", "binancecoin"]
 
 def load_trades():
     if os.path.exists(CSV_FILE):
-        return pd.read_csv(CSV_FILE)
+        df = pd.read_csv(CSV_FILE)
+        # --- CORREÇÃO DO BUG ---
+        # Força as colunas de data a serem lidas como Texto (Object)
+        # Isso evita que o Pandas ache que são números e trave na hora de salvar.
+        df['data_saida'] = df['data_saida'].astype('object')
+        df['data_entrada'] = df['data_entrada'].astype('object')
+        return df
     else:
         columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_pct", "lucro_usd", "motivo"]
         return pd.DataFrame(columns=columns)
