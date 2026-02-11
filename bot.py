@@ -17,22 +17,14 @@ CSV_FILE = "trades.csv"
 TOTAL_BANCA = 100.0       
 VALOR_POR_TRADE = 10.0    
 ALAVANCAGEM = 5
-MAX_OPEN_POSITIONS = 3    # Máximo de trades abertos simultâneos (Diversificação forçada)
-KILL_SWITCH_PCT = 0.10    # Se perder 10% da banca no dia, O ROBÔ PARA.
+MAX_OPEN_POSITIONS = 3    # Diversificação forçada
+KILL_SWITCH_PCT = 0.10    # Trava de Pânico (10% de perda no dia)
 
-# --- PARAMETROS PRO ---
+# --- PARAMETROS PRO (ATR & TRAILING) ---
 ATR_PERIOD = 14           
 ATR_MULTIPLIER_SL = 1.5   
 ATR_MULTIPLIER_TP = 3.0   
 TRAILING_TRIGGER = 1.0    
-
-# Matriz de Correlação Simplificada (Exemplo: Se já tem BTC, não compra ETH)
-# 1.0 = Correlação Total | 0.0 = Sem relação
-CORRELATION_MATRIX = {
-    "BITCOIN": ["ETHEREUM", "SOLANA", "BINANCECOIN"], # Se tiver BTC, evita estes
-    "ETHEREUM": ["BITCOIN", "SOLANA"],
-    "SOLANA": ["BITCOIN", "ETHEREUM"]
-}
 
 # Definição de Notícia Bombástica (Impacto > 0.5)
 IMPACTO_BOMBASTICO = 0.5 
@@ -61,35 +53,20 @@ def save_trades(df):
     print("💾 Planilha salva.")
 
 def check_kill_switch(df):
-    # Verifica o prejuízo SOMENTE do dia de hoje
     hoje = datetime.now().strftime("%Y-%m-%d")
     trades_hoje = df[df['data_saida'].astype(str).str.startswith(hoje)]
     
+    pnl_hoje = 0.0
     if not trades_hoje.empty:
         pnl_hoje = trades_hoje['lucro_usd'].sum()
         perda_maxima = TOTAL_BANCA * -KILL_SWITCH_PCT
         
         if pnl_hoje <= perda_maxima:
-            return True, pnl_hoje # ATIVA O KILL SWITCH
+            return True, pnl_hoje 
             
-    return False, 0.0
-
-def check_correlation(df, new_symbol):
-    # Verifica se já existe uma posição aberta em ativo correlacionado
-    abertas = df[df['status'] == 'ABERTO']
-    if abertas.empty: return False # Sem risco
-    
-    symbols_abertos = abertas['symbol'].str.upper().tolist()
-    new_symbol = new_symbol.upper()
-    
-    # Verifica na matriz manual
-    full_name_map = {"BTC": "BITCOIN", "ETH": "ETHEREUM", "SOL": "SOLANA", "BNB": "BINANCECOIN"}
-    # (Simplificação: na prática usaríamos correlação matemática real com pandas.corr())
-    
-    return False # (Deixei simplificado para não travar seu teste, mas aqui entraria a lógica)
+    return False, pnl_hoje
 
 def analyze_news_impact():
-    # ... (Mesma função de antes) ...
     try:
         analyzer = SentimentIntensityAnalyzer()
         total_score = 0; count = 0; max_impact = 0; top_headline = ""
@@ -120,7 +97,6 @@ def get_market_data():
     except: return []
 
 def get_technicals(coin_id):
-    # ... (Mesma função V12 - sem alterações) ...
     try:
         url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=14"
         resp = requests.get(url, headers=HEADERS, timeout=10)
@@ -153,16 +129,38 @@ def get_technicals(coin_id):
 # --- LÓGICA PRINCIPAL ---
 
 def run_bot():
-    print(f"🚀 ROBODERIK V13 (RISK MANAGER INSTITUCIONAL)...")
+    print(f"🚀 ROBODERIK V13 (DASHBOARD + RISK MANAGER)...")
     
     df = load_trades()
     
-    # 1. VERIFICAÇÃO DE KILL SWITCH (Antes de tudo)
+    # --- 1. DASHBOARD DE PERFORMANCE (Assertividade) ---
+    ordens_abertas = df[df['status'] == 'ABERTO']
+    fechados = df[df['status'] == 'FECHADO']
+    
+    total_fechados = len(fechados)
+    wins = len(fechados[fechados['resultado'] == 'WIN'])
+    losses = len(fechados[fechados['resultado'] == 'LOSS'])
+    
+    # Cálculo da Assertividade
+    taxa_acerto = (wins / total_fechados * 100) if total_fechados > 0 else 0.0
+    
+    lucro_total = fechados['lucro_usd'].sum() if not fechados.empty else 0.0
+    saldo_atual = TOTAL_BANCA + lucro_total
+    saldo_livre = saldo_atual - (len(ordens_abertas) * VALOR_POR_TRADE)
+    
+    print(f"\n🏆 --- DASHBOARD DE PERFORMANCE ---")
+    print(f"   🎯 Placar:       {wins} WINs  |  {losses} LOSSes")
+    print(f"   📊 Assertividade: {taxa_acerto:.2f}%")
+    print(f"   💸 Lucro Líquido: ${lucro_total:.2f}")
+    print(f"   💰 Banca Atual:   ${saldo_atual:.2f} (Livre: ${saldo_livre:.2f})")
+    print(f"------------------------------------")
+
+    # 2. VERIFICAÇÃO DE KILL SWITCH
     kill_activated, pnl_hoje = check_kill_switch(df)
     if kill_activated:
         print(f"\n💀 KILL SWITCH ATIVADO! Perda do dia: ${pnl_hoje:.2f}")
-        print("🚫 O Robô está bloqueado até amanhã para proteger o capital.")
-        return # Encerra execução imediatamente
+        print("🚫 Robô bloqueado temporariamente.")
+        return 
         
     market_data = get_market_data()
     avg_score, has_bombastic, top_headline = analyze_news_impact()
@@ -172,17 +170,7 @@ def run_bot():
 
     if not market_data: return
 
-    # --- DASHBOARD ---
-    ordens_abertas = df[df['status'] == 'ABERTO']
-    fechados = df[df['status'] == 'FECHADO']
-    wins = len(fechados[fechados['resultado'] == 'WIN'])
-    losses = len(fechados[fechados['resultado'] == 'LOSS'])
-    lucro_total = fechados['lucro_usd'].sum() if not fechados.empty else 0.0
-    saldo_livre = TOTAL_BANCA + lucro_total - (len(ordens_abertas) * VALOR_POR_TRADE)
-    
-    print(f"🏆 Placar: {wins}W - {losses}L | PnL: ${lucro_total:.2f} | Livre: ${saldo_livre:.2f}")
-    
-    # --- 2. GERENCIAR POSIÇÕES (COM TRAILING) ---
+    # --- 3. GERENCIAR POSIÇÕES (COM TRAILING) ---
     if not ordens_abertas.empty:
         print(f"\n🔎 GERENCIANDO POSIÇÕES:")
         for index, trade in ordens_abertas.iterrows():
@@ -199,7 +187,7 @@ def run_bot():
                 
                 novo_sl = sl; resultado = None; msg_trailing = ""
 
-                # LÓGICA TRAILING (Simplificada para brevidade, igual V12)
+                # TRAILING LONG
                 if trade['tipo'] == 'LONG':
                     if curr_price > (entrada + (atr_entrada * TRAILING_TRIGGER)) and sl < entrada:
                         novo_sl = entrada * 1.001
@@ -210,6 +198,7 @@ def run_bot():
                     if curr_price >= tp: resultado = 'WIN'
                     elif curr_price <= sl: resultado = 'LOSS'
 
+                # TRAILING SHORT
                 elif trade['tipo'] == 'SHORT':
                     if curr_price < (entrada - (atr_entrada * TRAILING_TRIGGER)) and sl > entrada:
                         novo_sl = entrada * 0.999
@@ -220,6 +209,7 @@ def run_bot():
                     if curr_price <= tp: resultado = 'WIN'
                     elif curr_price >= sl: resultado = 'LOSS'
 
+                # TRAILING NEUTRO
                 elif trade['tipo'] == 'NEUTRO':
                     if curr_price > (entrada + atr_entrada) and sl < entrada:
                         novo_sl = entrada * 1.001
@@ -245,15 +235,13 @@ def run_bot():
                     df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     print(f"      {'✅' if resultado == 'WIN' else '❌'} {resultado}! PnL: ${pnl_liquido:.2f}")
 
-    # --- 3. ESCANEAR (COM LIMITES DE EXPOSIÇÃO) ---
-    print("\n📡 ESCANEANDO (V13 INSTITUCIONAL):")
+    # --- 4. ESCANEAR ---
+    print("\n📡 ESCANEANDO (V13):")
     
-    # TRAVA DE SALDO
     if saldo_livre < VALOR_POR_TRADE:
         print(f"   🚫 Sem saldo livre.")
         save_trades(df); return
         
-    # TRAVA DE POSIÇÕES MÁXIMAS
     if len(ordens_abertas) >= MAX_OPEN_POSITIONS:
         print(f"   🚫 Limite de exposição atingido ({len(ordens_abertas)}/{MAX_OPEN_POSITIONS}).")
         save_trades(df); return
@@ -262,23 +250,18 @@ def run_bot():
         symbol = coin['symbol'].upper()
         if not df[(df['symbol'] == symbol) & (df['status'] == 'ABERTO')].empty: continue
         
-        # CHECAGEM DE CORRELAÇÃO (NOVO)
-        # Se já tivermos muitos trades abertos, evitamos abrir mais do mesmo
-        # (Aqui entra a lógica de não comprar tudo igual)
-
         price = coin['current_price']
         tech = get_technicals(coin['id'])
         if not tech or tech['atr'] == 0: continue
         
         rsi = tech['rsi']; adx = tech['adx']; ema = tech['ema50']
-        atr = tech['atr']; sma200 = tech['sma200']
-        min_20 = tech['min_20']
+        atr = tech['atr']; min_20 = tech['min_20']
 
         action = None; motivo = ""; sl = 0.0; tp = 0.0
         is_uptrend = price > ema; is_downtrend = price < ema
         dist_sl = atr * ATR_MULTIPLIER_SL; dist_tp = atr * ATR_MULTIPLIER_TP
 
-        # ESTRATÉGIAS (Mesmas do V12)
+        # ESTRATÉGIAS V13
         if rsi < 35 and adx > 25 and is_uptrend and avg_score > -0.2:
             action = "LONG"; motivo = f"Trend Pullback (RSI {rsi:.0f})"
             sl = price - dist_sl; tp = price + dist_tp
