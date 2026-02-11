@@ -1,18 +1,24 @@
 name: RoboDerik Simulator
 
 on:
+  # 1. Agendamento padrão (backup)
   schedule:
-    - cron: '*/5 * * * *'  # Roda a cada 30 minutos
-  repository_dispatch:       # <--- ADICIONE ISSO
-  types: [forcar_execucao] # Um nome para o seu evento
-  workflow_dispatch:      # Permite rodar manualmente no botão
+    - cron: '*/5 * * * *'
+  
+  # 2. Gatilho Manual (Botão)
+  workflow_dispatch:
+  
+  # 3. GATILHO EXTERNO (O Segredo do Google Apps Script) 🚀
+  repository_dispatch:
+    types: [forcar_execucao]
 
 permissions:
-  contents: write         # PERMISSÃO CRÍTICA PARA SALVAR O CSV
+  contents: write
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Baixar código do repositório
         uses: actions/checkout@v3
@@ -20,21 +26,23 @@ jobs:
       - name: Instalar Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
+          python-version: '3.9'
 
       - name: Instalar bibliotecas
         run: |
-          pip install -r requirements.txt
+          pip install pandas pandas_ta requests feedparser vaderSentiment
 
       - name: Rodar Robô Simulado
         env:
+          # Sua chave da CoinGecko (se estiver usando no Secrets)
           CG_API_KEY: ${{ secrets.CG_API_KEY }}
         run: python bot.py
 
       - name: Salvar Planilha (Commit)
         run: |
-          git config --global user.name "RoboDerik Bot"
-          git config --global user.email "bot@github.com"
+          git config --global user.name 'RoboDerik Bot'
+          git config --global user.email 'bot@djmtecnologia.com'
           git add trades.csv
-          git commit -m "📊 Atualizando Planilha de Trades" || echo "Nada para atualizar"
+          # O comando abaixo só commita se houver mudança, senão não faz nada (evita erro)
+          git commit -m "📊 Atualizando Planilha de Trades" || exit 0
           git push
