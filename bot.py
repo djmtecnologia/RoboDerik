@@ -13,12 +13,11 @@ BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"accept": "application/json", "x-cg-demo-api-key": API_KEY}
 CSV_FILE = "trades.csv"
 
-# Configuração de Risco
+# --- GESTÃO DE RISCO APERFEIÇOADA V6 ---
+VALOR_APOSTA = 100.0      
 TAKE_PROFIT_PCT = 0.03    # Alvo: 3%
-STOP_LOSS_PCT = 0.015     # Stop: 1.5%
-GRID_RANGE_PCT = 0.04     # Grid: 4%
-# QUANTO DINHEIRO O ROBÔ SIMULA POR TRADE?
-VALOR_APOSTA = 100.0  # Ex: $100 dólares por entrada
+STOP_LOSS_PCT = 0.02      # Stop: 2% (Aumentei um pouco para dar respiro)
+GRID_RANGE_PCT = 0.04     
 
 # Definição de Notícia Bombástica (Impacto > 0.5)
 IMPACTO_BOMBASTICO = 0.5 
@@ -36,7 +35,6 @@ def load_trades():
     if os.path.exists(CSV_FILE):
         return pd.read_csv(CSV_FILE)
     else:
-        # Adicionei "lucro_usd" no final
         columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_pct", "lucro_usd", "motivo"]
         return pd.DataFrame(columns=columns)
 
@@ -56,12 +54,9 @@ def analyze_news_impact():
                 score = analyzer.polarity_scores(entry.title)['compound']
                 total_score += score
                 count += 1
-                
                 impact = abs(score)
-                if impact > max_impact:
-                    max_impact = impact; top_headline = entry.title
+                if impact > max_impact: max_impact = impact; top_headline = entry.title
                 
-                # Ícones de log
                 emoji = "😐"
                 if score > 0.3: emoji = "🟢"
                 elif score < -0.3: emoji = "🔴"
@@ -81,18 +76,31 @@ def get_market_data():
 
 def get_technicals(coin_id):
     try:
-        url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=1"
+        # Pega 7 dias de velas (H1) para ter dados suficientes para Média Móvel
+        url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=7"
         data = requests.get(url, headers=HEADERS).json()
         df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close"])
+        
+        # Indicadores
         df["rsi"] = ta.rsi(df["close"], length=14)
         adx = ta.adx(df['high'], df['low'], df['close'], length=14)
-        return df["rsi"].iloc[-1], adx["ADX_14"].iloc[-1]
-    except: return 50, 0
+        
+        # NOVO: Média Móvel Exponencial de 50 períodos (Filtro de Tendência)
+        df["ema50"] = ta.ema(df["close"], length=50)
+        
+        current_rsi = df["rsi"].iloc[-1]
+        current_adx = adx["ADX_14"].iloc[-1]
+        current_ema = df["ema50"].iloc[-1]
+        
+        return current_rsi, current_adx, current_ema
+    except Exception as e:
+        print(f"Erro técnico em {coin_id}: {e}")
+        return 50, 0, 0
 
 # --- LÓGICA PRINCIPAL ---
 
 def run_bot():
-    print("🚀 ROBODERIK V4 (LONG + SHORT + GRID)...")
+    print(f"🚀 ROBODERIK V6 (FILTRO DE TENDÊNCIA EMA)...")
     
     df = load_trades()
     market_data = get_market_data()
@@ -101,11 +109,10 @@ def run_bot():
     print(f"\n📊 SENTIMENTO MÉDIO: {avg_score:.2f}")
     if has_bombastic:
         print(f"🚫 ALERTA 💣: {top_headline}")
-        print("   🔒 GRID NEUTRO BLOQUEADO.")
 
     if not market_data: return
 
-    # 1. GERENCIAR POSIÇÕES ABERTAS
+    # 1. GERENCIAR POSIÇÕES
     open_trades = df[df['status'] == 'ABERTO']
     if not open_trades.empty:
         print(f"\n🔎 GERENCIANDO POSIÇÕES:")
@@ -117,85 +124,78 @@ def run_bot():
                 curr_price = curr_data['current_price']
                 print(f"   -> {symbol} ({trade['tipo']}): Entrada ${trade['preco_entrada']} | Atual ${curr_price}")
                 
-                # SAÍDA LONG (Compra)
+                # ... (Lógica de Saída igual, omitida para brevidade, pode manter a anterior ou copiar do V5) ...
+                # VOU REPETIR A LÓGICA DE SAÍDA AQUI PARA GARANTIR QUE NÃO QUEBRE:
                 if trade['tipo'] == 'LONG':
                     if curr_price >= trade['take_profit']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'WIN'
-                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
-                        df.at[index, 'lucro_usd'] = VALOR_APOSTA * TAKE_PROFIT_PCT 
-                        print(f"      ✅ WIN (Long)! +${df.at[index, 'lucro_usd']:.2f}")
+                        df.at[index, 'preco_saida'] = curr_price
+                        df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
+                        df.at[index, 'lucro_usd'] = VALOR_APOSTA * TAKE_PROFIT_PCT
+                        df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     elif curr_price <= trade['stop_loss']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'LOSS'
-                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
+                        df.at[index, 'preco_saida'] = curr_price
+                        df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
                         df.at[index, 'lucro_usd'] = VALOR_APOSTA * -STOP_LOSS_PCT
-                        print(f"      ❌ LOSS (Long)... -${abs(df.at[index, 'lucro_usd']):.2f}")
-
-                # SAÍDA SHORT (Venda) - A lógica inverte!
-                # Ganha se o preço cair (<= TP). Perde se subir (>= SL).
+                        df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                
                 elif trade['tipo'] == 'SHORT':
                     if curr_price <= trade['take_profit']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'WIN'
-                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
+                        df.at[index, 'preco_saida'] = curr_price
+                        df.at[index, 'lucro_pct'] = TAKE_PROFIT_PCT * 100
                         df.at[index, 'lucro_usd'] = VALOR_APOSTA * TAKE_PROFIT_PCT
-                        print(f"      ✅ WIN (Short)! +${df.at[index, 'lucro_usd']:.2f}")
+                        df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
                     elif curr_price >= trade['stop_loss']:
                         df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'LOSS'
-                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
+                        df.at[index, 'preco_saida'] = curr_price
+                        df.at[index, 'lucro_pct'] = -STOP_LOSS_PCT * 100
                         df.at[index, 'lucro_usd'] = VALOR_APOSTA * -STOP_LOSS_PCT
-                        print(f"      ❌ LOSS (Short)... -${abs(df.at[index, 'lucro_usd']):.2f}")
-
-                # SAÍDA NEUTRO (Grid)
-                elif trade['tipo'] == 'NEUTRO':
-                    if curr_price >= trade['take_profit'] or curr_price <= trade['stop_loss']:
-                        df.at[index, 'status'] = 'FECHADO'; df.at[index, 'resultado'] = 'BREAKOUT'
-                        df.at[index, 'preco_saida'] = curr_price; df.at[index, 'lucro_pct'] = 0.0
-                        df.at[index, 'lucro_usd'] = 0.0  # <--- Definido como Zero no Breakout
                         df.at[index, 'data_saida'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                        print(f"      ⚠️ GRID ESTOURADO (Saída no 0x0)")
 
-    # 2. ESCANEAR OPORTUNIDADES
-    print("\n📡 ESCANEANDO OPORTUNIDADES:")
+    # 2. ESCANEAR OPORTUNIDADES COM FILTRO DE TENDÊNCIA
+    print("\n📡 ESCANEANDO OPORTUNIDADES (V6):")
     for coin in market_data:
         symbol = coin['symbol'].upper()
         if not df[(df['symbol'] == symbol) & (df['status'] == 'ABERTO')].empty: continue
 
         price = coin['current_price']
-        rsi, adx = get_technicals(coin['id'])
+        rsi, adx, ema = get_technicals(coin['id'])
         
         status_msg = "AGUARDAR"
         action = None
         motivo = ""
+
+        # FILTRO DE TENDÊNCIA
+        is_uptrend = price > ema  # Preço acima da média = Alta
+        is_downtrend = price < ema # Preço abaixo da média = Baixa
         
-        # --- ESTRATÉGIA 1: LONG (Compra no Fundo) ---
-        if rsi < 35 and adx > 25 and avg_score > -0.2:
-            status_msg = "SINAL LONG 🚀"
+        # --- ESTRATÉGIA 1: LONG (Só se for Uptrend) ---
+        # RSI < 35 (Desconto) MAS tem que estar em tendência de alta (Pullback)
+        if rsi < 35 and adx > 25 and is_uptrend and avg_score > -0.2:
+            status_msg = "SINAL LONG ✅"
             action = "LONG"
-            motivo = f"RSI Baixo ({rsi:.0f})"
+            motivo = f"Pullback na Alta (RSI {rsi:.0f})"
             tp = price * (1 + TAKE_PROFIT_PCT)
             sl = price * (1 - STOP_LOSS_PCT)
-
-        # --- ESTRATÉGIA 2: SHORT (Venda no Topo) ---
-        # RSI > 70 (Caro) + Tendência + Notícias não eufóricas (< 0.2)
-        elif rsi > 70 and adx > 25 and avg_score < 0.2:
+        
+        # --- ESTRATÉGIA 2: SHORT (Só se for Downtrend) ---
+        # RSI > 65 (Caro) MAS tem que estar em tendência de baixa (Repique)
+        elif rsi > 65 and adx > 25 and is_downtrend and avg_score < 0.2:
             status_msg = "SINAL SHORT 📉"
             action = "SHORT"
-            motivo = f"RSI Alto ({rsi:.0f})"
-            # No Short, TP é para baixo e SL é para cima
+            motivo = f"Repique na Baixa (RSI {rsi:.0f})"
             tp = price * (1 - TAKE_PROFIT_PCT)
             sl = price * (1 + STOP_LOSS_PCT)
 
-        # --- ESTRATÉGIA 3: NEUTRO (Lateral) ---
-        elif adx < 25 and (45 <= rsi <= 55):
-            if not has_bombastic:
-                status_msg = "SINAL GRID NEUTRO 🦀"
-                action = "NEUTRO"
-                motivo = "Lateral + Calmo"
-                tp = price * (1 + GRID_RANGE_PCT)
-                sl = price * (1 - GRID_RANGE_PCT)
-            else:
-                status_msg = "BLOQUEADO (Bomba 💣)"
+        # Diagnóstico no Log
+        trend_str = "ALTA" if is_uptrend else "BAIXA"
+        if status_msg == "AGUARDAR":
+            if rsi < 35 and is_downtrend: status_msg = "RSI Baixo mas Tendência de Baixa (PERIGO 🚫)"
+            if rsi > 65 and is_uptrend: status_msg = "RSI Alto mas Tendência de Alta (PERIGO 🚫)"
 
-        print(f"   🪙 {symbol:<4}: RSI {rsi:.1f} | ADX {adx:.1f} -> {status_msg}")
+        print(f"   🪙 {symbol:<4}: RSI {rsi:.1f} | Tendência: {trend_str} (EMA {ema:.2f}) -> {status_msg}")
 
         if action:
             print(f"      💾 Abrindo {action} em {symbol}...")
