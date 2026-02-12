@@ -6,137 +6,130 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import os
 from datetime import datetime
 import uuid
-import numpy as np
 
-# --- CONFIGURAÇÕES DO MOTOR V44 ---
+# --- CONFIGURAÇÕES INSTITUCIONAIS ---
 API_KEY = os.environ.get("CG_API_KEY")
 BASE_URL = "https://api.coingecko.com/api/v3"
 HEADERS = {"accept": "application/json", "x-cg-demo-api-key": API_KEY}
 CSV_FILE = "trades.csv"
 
-# --- GESTÃO DE BANCA E RISCO (ALINHADO COM BACKTEST 152x) ---
-BANCA_REFERENCIA = 1200.0  # Banca inicial de teste
-RESERVA_SEGURANCA_PCT = 0.15 
-RISCO_POR_TRADE_PCT = 0.20 
-MAX_VALOR_TRADE = 100000.0 
-ALAVANCAGEM_MAX = 5
-TAXA_CORRETORA = 0.0006
+# --- GESTÃO DE BANCA (ESTRATÉGIA 152x) ---
+BANCA_INICIAL_REAL = 1200.0  # Seu capital inicial real
+RESERVA_SEGURANCA_PCT = 0.15 # 15% Intocável
+RISCO_POR_TRADE_PCT = 0.20   # 20% do capital livre por trade
+MAX_VALOR_TRADE = 100000.0   # Teto de liquidez $100k
+ALAVANCAGEM_MAX = 5 
+KILL_SWITCH_PCT = 0.15       # Trava de segurança diária
 
-# --- PARÂMETROS TÉCNICOS ---
+# --- PARÂMETROS HÍBRIDOS ---
 ADX_TREND_LIMIT = 25
 ADX_LATERAL_LIMIT = 20
+EMA_FILTER = 200
 DONCHIAN_PERIOD = 25
-EMA_FILTER_PERIOD = 200
 
-COINS = ["bitcoin", "ethereum", "solana", "chainlink", "avalanche-2", "polkadot", "cardano"]
+RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
+COINS_IDS = ["bitcoin", "ethereum", "solana", "chainlink", "avalanche-2", "polkadot", "cardano"]
 
-# --- FUNÇÕES AUXILIARES ---
+# --- FUNÇÕES DE INFRAESTRUTURA ---
 
 def load_trades():
     if os.path.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
-        return df
-    else:
-        columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "take_profit", "status", "resultado", "data_saida", "preco_saida", "lucro_usd", "motivo", "alavancagem"]
-        return pd.DataFrame(columns=columns)
+        return pd.read_csv(CSV_FILE)
+    columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "status", "resultado", "data_saida", "preco_saida", "lucro_usd", "motivo", "alavancagem", "mes_referencia"]
+    return pd.DataFrame(columns=columns)
 
-def get_technicals_v14(coin_id):
+def analyze_news():
+    analyzer = SentimentIntensityAnalyzer()
+    total_score, count, max_impact, top_headline = 0, 0, 0, ""
+    print("\n📰 ANALISANDO NOTÍCIAS...")
+    for url in RSS_FEEDS:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:2]:
+                score = analyzer.polarity_scores(entry.title)['compound']
+                total_score += score; count += 1
+                if abs(score) > max_impact: max_impact = abs(score); top_headline = entry.title
+        except: continue
+    return (total_score / count if count > 0 else 0), max_impact >= 0.5, top_headline
+
+def get_technicals(coin_id):
     try:
-        url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=365" # Precisamos de histórico para EMA200
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        if resp.status_code != 200: return None
-        data = resp.json()
+        url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=365"
+        data = requests.get(url, headers=HEADERS).json()
         df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close"])
-        
-        # Cálculos V44
         df["adx"] = ta.adx(df['high'], df['low'], df['close'], length=14)["ADX_14"]
-        df["ema200"] = ta.ema(df["close"], length=EMA_FILTER_PERIOD)
+        df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
         df["atr"] = ta.atr(df['high'], df['low'], df['close'], length=14)
-        df["donch_high"] = df["high"].rolling(window=DONCHIAN_PERIOD).max().shift(1)
-        df["donch_low"] = df["low"].rolling(window=15).min().shift(1)
-        
-        last = df.iloc[-1]
-        return last.to_dict()
+        df["d_high"] = df['high'].rolling(window=DONCHIAN_PERIOD).max().shift(1)
+        df["d_low"] = df['low'].rolling(window=15).min().shift(1)
+        return df.iloc[-1].to_dict()
     except: return None
 
-# --- LÓGICA PRINCIPAL ---
+# --- CORE OPERACIONAL ---
 
-def run_bot_v14():
-    print(f"🚀 ROBODERIK V14 (HYBRID 152x MODE)")
-    df_trades = load_trades()
+def run_bot_v15():
+    print(f"🚀 ROBODERIK V15 (HYBRID 152x MODE + NEWS ANALYZER)")
+    df = load_trades()
     
-    # Cálculo do Saldo Atual (Composto)
-    lucro_acumulado = df_trades['lucro_usd'].sum() if not df_trades.empty else 0.0
-    banca_atual = BANCA_REFERENCIA + lucro_acumulado
-    piso_seguranca = BANCA_REFERENCIA * RESERVA_SEGURANCA_PCT
+    # Dashboard de Performance Realista
+    lucro_total = df['lucro_usd'].sum() if not df.empty else 0.0
+    banca_atual = BANCA_INICIAL_REAL + lucro_total
+    piso_seguranca = BANCA_INICIAL_REAL * RESERVA_SEGURANCA_PCT
+    mes_atual = datetime.now().strftime('%Y-%m')
+    lucro_mes = df[df['mes_referencia'] == mes_atual]['lucro_usd'].sum()
     
-    print(f"💰 Banca Atual: ${banca_atual:.2f} | Piso: ${piso_seguranca:.2f}")
+    print(f"\n🏆 --- DASHBOARD DE PERFORMANCE ---")
+    print(f"   💰 Banca Atual:   ${banca_atual:.2f} (Piso: ${piso_seguranca:.2f})")
+    print(f"   📈 Lucro no Mês:  ${lucro_mes:.2f}")
+    print(f"   📊 Multiplicação: {banca_atual/BANCA_INICIAL_REAL:.2f}x")
+    print("-" * 40)
 
-    # 1. GERENCIAR POSIÇÕES ABERTAS (SAÍDAS)
-    # [Lógica de monitoramento de preço para fechar trades via Trailing Stop V44]
-    
-    # 2. ESCANEAR NOVAS ENTRADAS
-    if banca_atual <= piso_seguranca:
-        print("🔴 Banca abaixo do piso de segurança. Operações suspensas.")
-        return
+    # Análise de Sentimento
+    sentimento, bombastico, manchete = analyze_news()
+    print(f"📊 SENTIMENTO: {sentimento:.2f} {'🚫 BLOQUEIO NOTÍCIA' if bombastico else '✅ OK'}")
 
-    params = {"vs_currency": "usd", "ids": ",".join(COINS), "sparkline": "false"}
-    market_data = requests.get(f"{BASE_URL}/coins/markets", headers=HEADERS, params=params).json()
+    # Escaneamento de Mercado
+    print("\n📡 ESCANEANDO OPORTUNIDADES HÍBRIDAS...")
+    params = {"vs_currency": "usd", "ids": ",".join(COINS_IDS), "sparkline": "false"}
+    market = requests.get(f"{BASE_URL}/coins/markets", headers=HEADERS, params=params).json()
 
-    for coin in market_data:
-        symbol = coin['symbol'].upper()
-        # Evita duplicar trade no mesmo símbolo
-        if not df_trades[(df_trades['symbol'] == symbol) & (df_trades['status'] == 'ABERTO')].empty: continue
+    for coin in market:
+        sym = coin['symbol'].upper()
+        if not df[(df['symbol'] == sym) & (df['status'] == 'ABERTO')].empty: continue
         
-        tech = get_technicals_v14(coin['id'])
+        tech = get_technicals(coin['id'])
         if not tech: continue
         
         price = coin['current_price']
-        adx = tech['adx']
-        ema = tech['ema200']
-        atr = tech['atr']
-        
-        action = None
-        motivo = ""
-        sl = 0.0
-        
-        # VALOR DO TRADE (20% do capital livre com Teto de $100k)
+        action, motivo, sl = None, "", 0.0
         valor_alocado = min((banca_atual - piso_seguranca) * RISCO_POR_TRADE_PCT, MAX_VALOR_TRADE)
 
-        # --- MODO TENDÊNCIA ---
-        if adx > ADX_TREND_LIMIT:
-            if price > tech['donch_high'] and price > ema:
-                action = "TREND_LONG"
-                sl = price - (atr * 2)
-            elif price < tech['donch_low'] and price < ema:
-                action = "TREND_SHORT"
-                sl = price + (atr * 2)
+        # Lógica V44: Tendência ou Grid?
+        if tech['adx'] > ADX_TREND_LIMIT and not bombastico:
+            if price > tech['d_high'] and price > tech['ema200']:
+                action, motivo = "TREND_LONG", "Rompimento de Alta"
+                sl = price - (tech['atr'] * 2)
+            elif price < tech['d_low'] and price < tech['ema200']:
+                action, motivo = "TREND_SHORT", "Rompimento de Baixa"
+                sl = price + (tech['atr'] * 2)
         
-        # --- MODO GRID NEUTRO ---
-        elif adx < ADX_LATERAL_LIMIT:
-            action = "GRID_NEUTRAL"
-            valor_alocado = valor_alocado * 0.2 # Mão menor no grid
-            sl = price - (atr * 3) # Stop largo para o grid
+        elif tech['adx'] < ADX_LATERAL_LIMIT and -0.2 < sentimento < 0.2:
+            action, motivo = "GRID_NEUTRAL", "Mercado Lateral"
+            valor_alocado *= 0.3 # Mão reduzida no grid
+            sl = price - (tech['atr'] * 3)
 
         if action:
-            print(f"✅ SINAL: {symbol} em modo {action} | Preço: ${price}")
+            print(f"   ✅ {sym}: Abrindo {action} (${price:.2f})")
             new_trade = {
-                "id": str(uuid.uuid4())[:8],
-                "data_entrada": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "symbol": symbol,
-                "tipo": action,
-                "preco_entrada": price,
-                "stop_loss": sl,
-                "take_profit": 0, # Saída por Donchian/ADX
-                "status": "ABERTO",
-                "lucro_usd": 0.0,
-                "motivo": action,
-                "alavancagem": ALAVANCAGEM_MAX
+                "id": str(uuid.uuid4())[:8], "data_entrada": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "symbol": sym, "tipo": action, "preco_entrada": price, "stop_loss": sl,
+                "status": "ABERTO", "resultado": "ANDAMENTO", "lucro_usd": 0.0, 
+                "motivo": motivo, "alavancagem": ALAVANCAGEM_MAX, "mes_referencia": mes_atual
             }
-            df_trades = pd.concat([df_trades, pd.DataFrame([new_trade])], ignore_index=True)
+            df = pd.concat([df, pd.DataFrame([new_trade])], ignore_index=True)
 
-    df_trades.to_csv(CSV_FILE, index=False)
-    print("💾 Ciclo finalizado. Trades atualizados.")
+    df.to_csv(CSV_FILE, index=False)
+    print("\n💾 Planilha e Ciclo Atualizados.")
 
 if __name__ == "__main__":
-    run_bot_v14()
+    run_bot_v15()
