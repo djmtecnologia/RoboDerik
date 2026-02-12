@@ -39,10 +39,11 @@ MAX_VALOR_TRADE = 100000.0
 ALAVANCAGEM_PADRAO = 5 
 
 # --- PARÂMETROS TÉCNICOS ---
-ADX_TREND_LIMIT = 25
-ADX_LATERAL_LIMIT = 20
+ADX_TREND_LIMIT = 20         # Reduzi para 20 para pegar inícios de tendência
+ADX_LATERAL_LIMIT = 15       # Ajuste proporcional
 EMA_FILTER = 200
-DONCHIAN_PERIOD = 25
+DONCHIAN_LONG = 25           # Canal Lento (Tendência Macro)
+DONCHIAN_SHORT = 10          # Canal Rápido (Entrada Tática)
 
 RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
 COINS_IDS = ["bitcoin", "ethereum", "solana", "chainlink", "avalanche-2", "polkadot", "cardano"]
@@ -64,7 +65,6 @@ def load_trades():
 def analyze_news():
     analyzer = SentimentIntensityAnalyzer()
     max_impact_abs = 0; top_score = 0; top_headline = ""
-    print("\n📰 ANALISANDO NOTÍCIAS (GRAVIDADE)...")
     try:
         for url in RSS_FEEDS:
             feed = feedparser.parse(url)
@@ -88,19 +88,28 @@ def get_technicals(coin_id):
         url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=365"
         resp = requests.get(url, headers=HEADERS, timeout=10).json()
         df = pd.DataFrame(resp, columns=["time", "open", "high", "low", "close"])
+        
         df["adx"] = ta.adx(df['high'], df['low'], df['close'], length=14)["ADX_14"]
+        df["rsi"] = ta.rsi(df["close"], length=14)
         df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
         df["atr"] = ta.atr(df['high'], df['low'], df['close'], length=14)
-        df["d_high"] = df['high'].rolling(window=DONCHIAN_PERIOD).max().shift(1)
-        df["d_low"] = df['low'].rolling(window=15).min().shift(1)
+        
+        # Canal Macro (25 dias)
+        df["d_high_25"] = df['high'].rolling(window=DONCHIAN_LONG).max().shift(1)
+        df["d_low_25"] = df['low'].rolling(window=DONCHIAN_LONG).min().shift(1)
+        
+        # Canal Tático (10 dias) - Mais rápido
+        df["d_high_10"] = df['high'].rolling(window=DONCHIAN_SHORT).max().shift(1)
+        df["d_low_10"] = df['low'].rolling(window=DONCHIAN_SHORT).min().shift(1)
+        
         return df.iloc[-1].to_dict()
     except: return None
 
-# --- CORE V17.1 (DEBUGGER) ---
+# --- CORE V18 (TACTICAL) ---
 
-def run_bot_v17_1():
+def run_bot_v18():
     data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V17.1 (TRANSPARENCY MODE) | {data_hora}")
+    print(f"🚀 ROBODERIK V18 (ENTRADAS TÁTICAS) | {data_hora}")
     df = load_trades()
     
     lucro_total = df['lucro_usd'].sum() if not df.empty else 0.0
@@ -113,9 +122,7 @@ def run_bot_v17_1():
 
     score, manchete = analyze_news()
     zone_name, permission, lev_mult, stop_mult = get_sentiment_zone(score)
-    
     print(f"📊 NOTÍCIA: {score:.2f} | {zone_name}")
-    print(f"   ⚠️ Manchete: {manchete[:70]}...")
     print(f"   🔒 PERMISSÃO: {permission}")
 
     print("\n📡 ESCANEANDO MERCADO...")
@@ -129,68 +136,49 @@ def run_bot_v17_1():
             print(f"   🟡 {sym:<5}: Posição Aberta.")
             continue
         
-        tech = get_technicals(coin['id'])
-        if not tech: continue
+        t = get_technicals(coin['id'])
+        if not t: continue
         
         price = coin['current_price']
-        adx, ema, d_high, d_low, atr = tech['adx'], tech['ema200'], tech['d_high'], tech['d_low'], tech['atr']
+        adx, rsi, ema, atr = t['adx'], t['rsi'], t['ema200'], t['atr']
         
         action, motivo, sl = None, "", 0.0
         
-        # --- LÓGICA HÍBRIDA ---
-        
-        # A. GRID (MERCADO LATERAL)
-        if adx < ADX_LATERAL_LIMIT and permission == "ALL":
-            action = "GRID_NEUTRAL"
-            motivo = "Grid Lateral (Zona Neutra)"
-            sl = price - (atr * 3)
+        # --- ESTRATÉGIAS DE ENTRADA (HIERARQUIA) ---
 
-        # B. TENDÊNCIA DE ALTA (LONG)
-        elif price > d_high and price > ema and adx > ADX_TREND_LIMIT:
+        # 1. SETUP DE PULLBACK (COMPRA BARATO NA TENDÊNCIA)
+        # Se tendência é ALTA (Price > EMA) e RSI caiu (< 45), é promoção!
+        if price > ema and rsi < 45 and adx > 20:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
-                action = "TREND_LONG"
-                motivo = f"Rompimento Alta ({zone_name})"
-                sl = price - (atr * stop_mult)
-            else:
-                motivo = f"Setup Long ignorado pela Zona {permission}"
+                action, motivo, sl = "LONG_PULLBACK", f"Compra na Baixa (RSI {rsi:.0f})", price - (atr * 2)
+        
+        # 2. SETUP DE ROMPIMENTO RÁPIDO (10 DIAS)
+        elif price > t['d_high_10'] and price > ema and adx > 20:
+            if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
+                action, motivo, sl = "LONG_BREAKOUT_10", f"Rompimento Tático (${t['d_high_10']:.2f})", price - (atr * 2)
 
-        # C. TENDÊNCIA DE BAIXA (SHORT)
-        elif price < d_low and price < ema and adx > ADX_TREND_LIMIT:
+        # 3. SETUP DE ROMPIMENTO MACRO (25 DIAS) - O CLÁSSICO
+        elif price > t['d_high_25'] and price > ema:
+            if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
+                action, motivo, sl = "LONG_MACRO", f"Rompimento Histórico (${t['d_high_25']:.2f})", price - (atr * 3)
+
+        # 4. SETUP DE VENDA (SHORT)
+        elif price < t['d_low_10'] and price < ema and adx > 20:
             if permission in ["ALL", "BIAS_SHORT", "SHORT_ONLY"]:
-                action = "TREND_SHORT"
-                motivo = f"Rompimento Baixa ({zone_name})"
-                sl = price + (atr * stop_mult)
-            else:
-                motivo = f"Setup Short ignorado pela Zona {permission}"
-        
-        # D. SNIPER DE NOTÍCIA EXTREMA
-        elif permission == "LONG_ONLY" and price > ema:
-             action = "SNIPER_LONG"
-             motivo = "Euforia Extrema + Preço > EMA"
-             sl = price - (atr * stop_mult)
-        elif permission == "SHORT_ONLY" and price < ema:
-             action = "SNIPER_SHORT"
-             motivo = "Pânico Extremo + Preço < EMA"
-             sl = price + (atr * stop_mult)
-        
-        # --- DIAGNÓSTICO DE FALHA (POR QUE NÃO ENTROU?) ---
-        else:
-            infos = f"[ADX:{adx:.0f} | D_High:${d_high:.2f}]"
-            if adx < ADX_LATERAL_LIMIT and permission != "ALL":
-                motivo = f"Grid bloqueado: Viés é {permission} (Exige Neutro) {infos}"
-            elif adx > ADX_TREND_LIMIT:
-                if price <= d_high and price >= d_low:
-                    motivo = f"Preço (${price:.2f}) dentro do canal. {infos}"
-                elif price < ema and price > d_high:
-                    motivo = f"Rompimento de alta s/ confirmação da EMA. {infos}"
-                elif price > ema and price < d_low:
-                    motivo = f"Rompimento de baixa s/ confirmação da EMA. {infos}"
-            else:
-                motivo = f"Zona Morta (ADX {adx:.1f} entre 20-25). Aguardando Força."
+                action, motivo, sl = "SHORT_BREAKOUT_10", f"Perda de Fundo Tático (${t['d_low_10']:.2f})", price + (atr * 2)
+
+        # 5. GRID (MERCADO NEUTRO)
+        elif adx < ADX_LATERAL_LIMIT and permission == "ALL":
+             action, motivo, sl = "GRID_NEUTRAL", "Mercado Lateral (Grid)", price - (atr * 3)
+
+        # --- DIAGNÓSTICO DE NÃO-ENTRADA ---
+        if not action:
+            dist_10d = ((t['d_high_10'] - price) / price) * 100
+            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}% em ${t['d_high_10']:.2f}) ou Pullback (RSI {rsi:.0f} > 45)"
 
         if action:
             alavancagem_final = int(ALAVANCAGEM_PADRAO * lev_mult)
-            print(f"   ✅ {sym:<5}: ABRINDO {action} | Lev: {alavancagem_final}x | Preço: ${price:.2f}")
+            print(f"   ✅ {sym:<5}: ABRINDO {action} | Preço: ${price:.2f}")
             new_trade = {
                 "id": str(uuid.uuid4())[:8], "data_entrada": data_hora,
                 "symbol": sym, "tipo": action, "preco_entrada": price, "stop_loss": sl,
@@ -199,10 +187,10 @@ def run_bot_v17_1():
             }
             df = pd.concat([df, pd.DataFrame([new_trade])], ignore_index=True)
         else:
-            print(f"   ⚪ {sym:<5}: {motivo}")
+            print(f"   ⚪ {sym:<5}: {motivo} [P:${price:.2f}]")
 
     df.to_csv(CSV_FILE, index=False)
-    print("\n💾 Ciclo V17.1 Finalizado.")
+    print("\n💾 Ciclo V18 Finalizado.")
 
 if __name__ == "__main__":
-    run_bot_v17_1()
+    run_bot_v18()
