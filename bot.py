@@ -2,16 +2,27 @@ import sys
 import subprocess
 import os
 
-# --- AUTO-INSTALAÇÃO ---
+# --- AUTO-INSTALAÇÃO ROBUSTA ---
 def install(package):
     try: __import__(package)
     except ImportError:
-        map_lib = {"vaderSentiment": "vaderSentiment", "feedparser": "feedparser", "pandas_ta": "pandas_ta", "pytz": "pytz", "requests": "requests", "pandas": "pandas"}
-        subprocess.check_call([sys.executable, "-m", "pip", "install", map_lib.get(package, package)])
+        # Mapa de correção para nomes de pacotes pip
+        pip_map = {
+            "vaderSentiment": "vaderSentiment",
+            "feedparser": "feedparser",
+            "pandas_ta": "pandas_ta",
+            "pytz": "pytz",
+            "yfinance": "yfinance", # Adicionado yfinance
+            "requests": "requests",
+            "pandas": "pandas"
+        }
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pip_map.get(package, package)])
 
-libs = ["pytz", "pandas_ta", "vaderSentiment", "feedparser", "requests", "pandas"]
+# Lista de bibliotecas essenciais
+libs = ["yfinance", "pytz", "pandas_ta", "vaderSentiment", "feedparser", "requests", "pandas"]
 for lib in libs: install(lib)
 
+import yfinance as yf
 import requests
 import pandas as pd
 import pandas_ta as ta
@@ -25,8 +36,7 @@ import numpy as np
 # --- CONFIGURAÇÕES ---
 API_KEY = os.environ.get("CG_API_KEY")
 BASE_URL_CG = "https://api.coingecko.com/api/v3"
-BASE_URL_BINANCE = "https://api.binance.com/api/v3" # Fonte Reserva
-HEADERS = {"accept": "application/json", "x-cg-demo-api-key": API_KEY}
+BASE_URL_BINANCE = "https://api.binance.com/api/v3"
 CSV_FILE = "trades.csv"
 
 try: FUSO = pytz.timezone('America/Sao_Paulo')
@@ -47,18 +57,19 @@ DONCHIAN_LONG = 25
 DONCHIAN_SHORT = 10          
 
 RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
-# Mapeamento ID CoinGecko -> Símbolo Binance
+
+# MAPEAMENTO TRIPLO: ID CoinGecko | Symbol Binance | Ticker Yahoo
 COINS_MAP = {
-    "bitcoin": "BTCUSDT",
-    "ethereum": "ETHUSDT",
-    "solana": "SOLUSDT",
-    "chainlink": "LINKUSDT",
-    "avalanche-2": "AVAXUSDT",
-    "polkadot": "DOTUSDT",
-    "cardano": "ADAUSDT"
+    "BTC": {"cg": "bitcoin", "bin": "BTCUSDT", "yf": "BTC-USD"},
+    "ETH": {"cg": "ethereum", "bin": "ETHUSDT", "yf": "ETH-USD"},
+    "SOL": {"cg": "solana", "bin": "SOLUSDT", "yf": "SOL-USD"},
+    "LINK": {"cg": "chainlink", "bin": "LINKUSDT", "yf": "LINK-USD"},
+    "AVAX": {"cg": "avalanche-2", "bin": "AVAXUSDT", "yf": "AVAX-USD"},
+    "DOT": {"cg": "polkadot", "bin": "DOTUSDT", "yf": "DOT-USD"},
+    "ADA": {"cg": "cardano", "bin": "ADAUSDT", "yf": "ADA-USD"}
 }
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES AUXILIARES ---
 
 def get_now_str(): return datetime.now(FUSO).strftime("%d/%m/%Y %H:%M:%S")
 def get_current_month(): return datetime.now(FUSO).strftime('%Y-%m')
@@ -93,28 +104,40 @@ def get_sentiment_zone(score):
     elif score >= 0.6: return "🚀 EUFORIA EXTREMA", "LONG_ONLY", 1.0, 3.0
     return "⚪ NEUTRO", "ALL", 1.0, 2.0
 
-# --- NOVA FUNÇÃO HÍBRIDA DE DADOS (CG + BINANCE) ---
-def get_market_data_robust(coin_id, binance_symbol):
-    # 1. Tenta pegar do CoinGecko (Preferencial)
+# --- FUNÇÃO DE DADOS BLINDADA (YAHOO + BINANCE + CG) ---
+def get_market_data_ultimate(coin_keys):
+    # 1. TENTA YAHOO FINANCE (Mais robusto para GitHub Actions)
     try:
-        url = f"{BASE_URL_CG}/coins/{coin_id}/ohlc?vs_currency=usd&days=365"
+        ticker = yf.Ticker(coin_keys['yf'])
+        # Baixa 2 anos para garantir EMA200
+        df = ticker.history(period="2y", interval="1d")
+        if not df.empty:
+            df = df.reset_index()
+            df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close"})
+            return df, "YahooFinance"
+    except: pass
+
+    # 2. TENTA BINANCE
+    try:
+        url = f"{BASE_URL_BINANCE}/klines?symbol={coin_keys['bin']}&interval=1d&limit=365"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            df = pd.DataFrame(data)
+            df = df.iloc[:, :5] # Pega OHLC
+            df.columns = ["time", "open", "high", "low", "close"]
+            df = df.astype(float)
+            return df, "Binance"
+    except: pass
+
+    # 3. TENTA COINGECKO (Último recurso)
+    try:
+        url = f"{BASE_URL_CG}/coins/{coin_keys['cg']}/ohlc?vs_currency=usd&days=365"
         resp = requests.get(url, headers=HEADERS, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
             df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close"])
             return df, "CoinGecko"
-    except: pass # Falhou CG, vai para Binance
-
-    # 2. Tenta pegar da Binance (Fallback Robusto)
-    try:
-        url = f"{BASE_URL_BINANCE}/klines?symbol={binance_symbol}&interval=1d&limit=365"
-        resp = requests.get(url, timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            # Binance retorna lista de strings, converter para float
-            df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close", "vol", "ct", "qa", "n", "tb", "tq", "ig"])
-            df = df[["time", "open", "high", "low", "close"]].astype(float)
-            return df, "Binance"
     except: pass
     
     return None, None
@@ -122,6 +145,7 @@ def get_market_data_robust(coin_id, binance_symbol):
 def calculate_indicators(df):
     if df is None or len(df) < 200: return None
     
+    # Cálculos Técnicos
     df["adx"] = ta.adx(df['high'], df['low'], df['close'], length=14)["ADX_14"]
     df["rsi"] = ta.rsi(df["close"], length=14)
     df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
@@ -134,13 +158,14 @@ def calculate_indicators(df):
     
     return df.iloc[-1].to_dict()
 
-# --- CORE V18.2 (MULTI-SOURCE) ---
+# --- CORE V18.3 ---
 
-def run_bot_v18_2():
+def run_bot_v18_3():
     data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V18.2 (MULTI-SOURCE) | {data_hora}")
+    print(f"🚀 ROBODERIK V18.3 (YAHOO POWERED) | {data_hora}")
     df_trades = load_trades()
     
+    # Dashboard
     lucro_total = df_trades['lucro_usd'].sum() if not df_trades.empty else 0.0
     banca_atual = BANCA_INICIAL_REAL + lucro_total
     piso_seguranca = BANCA_INICIAL_REAL * RESERVA_SEGURANCA_PCT
@@ -149,36 +174,33 @@ def run_bot_v18_2():
     print(f"   💰 Banca Atual:   ${banca_atual:.2f} (Piso: ${piso_seguranca:.2f})")
     print("-" * 40)
 
+    # Notícias
     score, manchete = analyze_news()
     zone_name, permission, lev_mult, stop_mult = get_sentiment_zone(score)
     print(f"📊 NOTÍCIA: {score:.2f} | {zone_name}")
     print(f"   🔒 PERMISSÃO: {permission}")
 
-    print("\n📡 ESCANEANDO MERCADO (CG + BINANCE)...")
+    print("\n📡 ESCANEANDO MERCADO (YF/BIN/CG)...")
 
-    for coin_id, binance_symbol in COINS_MAP.items():
-        sym = binance_symbol.replace("USDT", "") # Nome limpo (BTC)
-        
+    for sym, keys in COINS_MAP.items():
         if not df_trades[(df_trades['symbol'] == sym) & (df_trades['status'] == 'ABERTO')].empty:
             print(f"   🟡 {sym:<5}: Posição Aberta.")
             continue
         
-        # Busca dados brutos (Tenta CG, se falhar vai de Binance)
-        df_raw, source = get_market_data_robust(coin_id, binance_symbol)
-        
-        # Calcula indicadores
+        # BUSCA DE DADOS BLINDADA
+        df_raw, source = get_market_data_ultimate(keys)
         t = calculate_indicators(df_raw)
         
         if not t: 
-            print(f"   🔴 {sym:<5}: Falha de dados em ambas as fontes.")
+            print(f"   🔴 {sym:<5}: Falha total de dados.")
             continue
         
         price = t['close']
         adx, rsi, ema, atr = t['adx'], t['rsi'], t['ema200'], t['atr']
         
-        # Verifica integridade dos dados antes de operar
+        # Validação extra de integridade
         if pd.isna(ema) or pd.isna(rsi):
-            print(f"   ⚠️ {sym:<5}: Dados insuficientes via {source}.")
+            print(f"   ⚠️ {sym:<5}: Indicadores corrompidos ({source}).")
             continue
 
         action, motivo, sl = None, "", 0.0
@@ -210,7 +232,7 @@ def run_bot_v18_2():
 
         if not action:
             dist_10d = ((t['d_high_10'] - price) / price) * 100
-            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}%) ou Pullback (RSI {rsi:.0f} > 45) via {source}"
+            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}%) ou Pullback (RSI {rsi:.0f} > 45) [{source}]"
 
         if action:
             alavancagem_final = int(ALAVANCAGEM_PADRAO * lev_mult)
@@ -226,7 +248,7 @@ def run_bot_v18_2():
             print(f"   ⚪ {sym:<5}: {motivo} [P:${price:.2f}]")
 
     df_trades.to_csv(CSV_FILE, index=False)
-    print("\n💾 Ciclo V18.2 Finalizado.")
+    print("\n💾 Ciclo V18.3 Finalizado.")
 
 if __name__ == "__main__":
-    run_bot_v18_2()
+    run_bot_v18_3()
