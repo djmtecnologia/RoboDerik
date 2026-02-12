@@ -3,3 +3,4 @@ pandas
 pandas_ta
 feedparser
 vaderSentiment
+pytz
