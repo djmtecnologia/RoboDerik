@@ -39,11 +39,11 @@ MAX_VALOR_TRADE = 100000.0
 ALAVANCAGEM_PADRAO = 5 
 
 # --- PARÂMETROS TÉCNICOS ---
-ADX_TREND_LIMIT = 20         # Reduzi para 20 para pegar inícios de tendência
-ADX_LATERAL_LIMIT = 15       # Ajuste proporcional
+ADX_TREND_LIMIT = 20         
+ADX_LATERAL_LIMIT = 15       
 EMA_FILTER = 200
-DONCHIAN_LONG = 25           # Canal Lento (Tendência Macro)
-DONCHIAN_SHORT = 10          # Canal Rápido (Entrada Tática)
+DONCHIAN_LONG = 25           
+DONCHIAN_SHORT = 10          
 
 RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
 COINS_IDS = ["bitcoin", "ethereum", "solana", "chainlink", "avalanche-2", "polkadot", "cardano"]
@@ -57,7 +57,10 @@ def load_trades():
     if os.path.exists(CSV_FILE):
         df = pd.read_csv(CSV_FILE)
         if 'mes_referencia' not in df.columns:
-            df['mes_referencia'] = get_current_month()
+            if 'data_entrada' in df.columns:
+                try: df['mes_referencia'] = pd.to_datetime(df['data_entrada'], dayfirst=True, errors='coerce').dt.strftime('%Y-%m')
+                except: df['mes_referencia'] = get_current_month()
+            else: df['mes_referencia'] = get_current_month()
         return df
     columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "status", "resultado", "data_saida", "preco_saida", "lucro_usd", "motivo", "alavancagem", "mes_referencia"]
     return pd.DataFrame(columns=columns)
@@ -94,22 +97,19 @@ def get_technicals(coin_id):
         df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
         df["atr"] = ta.atr(df['high'], df['low'], df['close'], length=14)
         
-        # Canal Macro (25 dias)
         df["d_high_25"] = df['high'].rolling(window=DONCHIAN_LONG).max().shift(1)
         df["d_low_25"] = df['low'].rolling(window=DONCHIAN_LONG).min().shift(1)
-        
-        # Canal Tático (10 dias) - Mais rápido
         df["d_high_10"] = df['high'].rolling(window=DONCHIAN_SHORT).max().shift(1)
         df["d_low_10"] = df['low'].rolling(window=DONCHIAN_SHORT).min().shift(1)
         
         return df.iloc[-1].to_dict()
     except: return None
 
-# --- CORE V18 (TACTICAL) ---
+# --- CORE V18.1 (CORREÇÃO DE BUG) ---
 
-def run_bot_v18():
+def run_bot_v18_1():
     data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V18 (ENTRADAS TÁTICAS) | {data_hora}")
+    print(f"🚀 ROBODERIK V18.1 (STABLE) | {data_hora}")
     df = load_trades()
     
     lucro_total = df['lucro_usd'].sum() if not df.empty else 0.0
@@ -141,40 +141,43 @@ def run_bot_v18():
         
         price = coin['current_price']
         adx, rsi, ema, atr = t['adx'], t['rsi'], t['ema200'], t['atr']
+
+        # --- CORREÇÃO DE BUG (CHECK DE NULIDADE) ---
+        if pd.isna(ema) or pd.isna(rsi) or pd.isna(adx):
+            print(f"   ⚠️ {sym:<5}: Histórico insuficiente para calcular indicadores (EMA/RSI).")
+            continue
         
         action, motivo, sl = None, "", 0.0
         
-        # --- ESTRATÉGIAS DE ENTRADA (HIERARQUIA) ---
+        # --- ESTRATÉGIAS ---
 
-        # 1. SETUP DE PULLBACK (COMPRA BARATO NA TENDÊNCIA)
-        # Se tendência é ALTA (Price > EMA) e RSI caiu (< 45), é promoção!
+        # 1. PULLBACK (COMPRA BARATO)
         if price > ema and rsi < 45 and adx > 20:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
                 action, motivo, sl = "LONG_PULLBACK", f"Compra na Baixa (RSI {rsi:.0f})", price - (atr * 2)
         
-        # 2. SETUP DE ROMPIMENTO RÁPIDO (10 DIAS)
+        # 2. ROMPIMENTO TÁTICO (10 DIAS)
         elif price > t['d_high_10'] and price > ema and adx > 20:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
                 action, motivo, sl = "LONG_BREAKOUT_10", f"Rompimento Tático (${t['d_high_10']:.2f})", price - (atr * 2)
 
-        # 3. SETUP DE ROMPIMENTO MACRO (25 DIAS) - O CLÁSSICO
+        # 3. ROMPIMENTO MACRO (25 DIAS)
         elif price > t['d_high_25'] and price > ema:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
                 action, motivo, sl = "LONG_MACRO", f"Rompimento Histórico (${t['d_high_25']:.2f})", price - (atr * 3)
 
-        # 4. SETUP DE VENDA (SHORT)
+        # 4. SHORT TÁTICO
         elif price < t['d_low_10'] and price < ema and adx > 20:
             if permission in ["ALL", "BIAS_SHORT", "SHORT_ONLY"]:
                 action, motivo, sl = "SHORT_BREAKOUT_10", f"Perda de Fundo Tático (${t['d_low_10']:.2f})", price + (atr * 2)
 
-        # 5. GRID (MERCADO NEUTRO)
+        # 5. GRID
         elif adx < ADX_LATERAL_LIMIT and permission == "ALL":
              action, motivo, sl = "GRID_NEUTRAL", "Mercado Lateral (Grid)", price - (atr * 3)
 
-        # --- DIAGNÓSTICO DE NÃO-ENTRADA ---
         if not action:
             dist_10d = ((t['d_high_10'] - price) / price) * 100
-            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}% em ${t['d_high_10']:.2f}) ou Pullback (RSI {rsi:.0f} > 45)"
+            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}%) ou Pullback (RSI {rsi:.0f} > 45)"
 
         if action:
             alavancagem_final = int(ALAVANCAGEM_PADRAO * lev_mult)
@@ -190,7 +193,7 @@ def run_bot_v18():
             print(f"   ⚪ {sym:<5}: {motivo} [P:${price:.2f}]")
 
     df.to_csv(CSV_FILE, index=False)
-    print("\n💾 Ciclo V18 Finalizado.")
+    print("\n💾 Ciclo V18.1 Finalizado.")
 
 if __name__ == "__main__":
-    run_bot_v18()
+    run_bot_v18_1()
