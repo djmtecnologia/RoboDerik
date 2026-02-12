@@ -24,7 +24,8 @@ import numpy as np
 
 # --- CONFIGURAÇÕES ---
 API_KEY = os.environ.get("CG_API_KEY")
-BASE_URL = "https://api.coingecko.com/api/v3"
+BASE_URL_CG = "https://api.coingecko.com/api/v3"
+BASE_URL_BINANCE = "https://api.binance.com/api/v3" # Fonte Reserva
 HEADERS = {"accept": "application/json", "x-cg-demo-api-key": API_KEY}
 CSV_FILE = "trades.csv"
 
@@ -46,7 +47,16 @@ DONCHIAN_LONG = 25
 DONCHIAN_SHORT = 10          
 
 RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
-COINS_IDS = ["bitcoin", "ethereum", "solana", "chainlink", "avalanche-2", "polkadot", "cardano"]
+# Mapeamento ID CoinGecko -> Símbolo Binance
+COINS_MAP = {
+    "bitcoin": "BTCUSDT",
+    "ethereum": "ETHUSDT",
+    "solana": "SOLUSDT",
+    "chainlink": "LINKUSDT",
+    "avalanche-2": "AVAXUSDT",
+    "polkadot": "DOTUSDT",
+    "cardano": "ADAUSDT"
+}
 
 # --- FUNÇÕES ---
 
@@ -57,10 +67,7 @@ def load_trades():
     if os.path.exists(CSV_FILE):
         df = pd.read_csv(CSV_FILE)
         if 'mes_referencia' not in df.columns:
-            if 'data_entrada' in df.columns:
-                try: df['mes_referencia'] = pd.to_datetime(df['data_entrada'], dayfirst=True, errors='coerce').dt.strftime('%Y-%m')
-                except: df['mes_referencia'] = get_current_month()
-            else: df['mes_referencia'] = get_current_month()
+            df['mes_referencia'] = get_current_month()
         return df
     columns = ["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "status", "resultado", "data_saida", "preco_saida", "lucro_usd", "motivo", "alavancagem", "mes_referencia"]
     return pd.DataFrame(columns=columns)
@@ -86,33 +93,55 @@ def get_sentiment_zone(score):
     elif score >= 0.6: return "🚀 EUFORIA EXTREMA", "LONG_ONLY", 1.0, 3.0
     return "⚪ NEUTRO", "ALL", 1.0, 2.0
 
-def get_technicals(coin_id):
+# --- NOVA FUNÇÃO HÍBRIDA DE DADOS (CG + BINANCE) ---
+def get_market_data_robust(coin_id, binance_symbol):
+    # 1. Tenta pegar do CoinGecko (Preferencial)
     try:
-        url = f"{BASE_URL}/coins/{coin_id}/ohlc?vs_currency=usd&days=365"
-        resp = requests.get(url, headers=HEADERS, timeout=10).json()
-        df = pd.DataFrame(resp, columns=["time", "open", "high", "low", "close"])
-        
-        df["adx"] = ta.adx(df['high'], df['low'], df['close'], length=14)["ADX_14"]
-        df["rsi"] = ta.rsi(df["close"], length=14)
-        df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
-        df["atr"] = ta.atr(df['high'], df['low'], df['close'], length=14)
-        
-        df["d_high_25"] = df['high'].rolling(window=DONCHIAN_LONG).max().shift(1)
-        df["d_low_25"] = df['low'].rolling(window=DONCHIAN_LONG).min().shift(1)
-        df["d_high_10"] = df['high'].rolling(window=DONCHIAN_SHORT).max().shift(1)
-        df["d_low_10"] = df['low'].rolling(window=DONCHIAN_SHORT).min().shift(1)
-        
-        return df.iloc[-1].to_dict()
-    except: return None
+        url = f"{BASE_URL_CG}/coins/{coin_id}/ohlc?vs_currency=usd&days=365"
+        resp = requests.get(url, headers=HEADERS, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close"])
+            return df, "CoinGecko"
+    except: pass # Falhou CG, vai para Binance
 
-# --- CORE V18.1 (CORREÇÃO DE BUG) ---
-
-def run_bot_v18_1():
-    data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V18.1 (STABLE) | {data_hora}")
-    df = load_trades()
+    # 2. Tenta pegar da Binance (Fallback Robusto)
+    try:
+        url = f"{BASE_URL_BINANCE}/klines?symbol={binance_symbol}&interval=1d&limit=365"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            # Binance retorna lista de strings, converter para float
+            df = pd.DataFrame(data, columns=["time", "open", "high", "low", "close", "vol", "ct", "qa", "n", "tb", "tq", "ig"])
+            df = df[["time", "open", "high", "low", "close"]].astype(float)
+            return df, "Binance"
+    except: pass
     
-    lucro_total = df['lucro_usd'].sum() if not df.empty else 0.0
+    return None, None
+
+def calculate_indicators(df):
+    if df is None or len(df) < 200: return None
+    
+    df["adx"] = ta.adx(df['high'], df['low'], df['close'], length=14)["ADX_14"]
+    df["rsi"] = ta.rsi(df["close"], length=14)
+    df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
+    df["atr"] = ta.atr(df['high'], df['low'], df['close'], length=14)
+    
+    df["d_high_25"] = df['high'].rolling(window=DONCHIAN_LONG).max().shift(1)
+    df["d_low_25"] = df['low'].rolling(window=DONCHIAN_LONG).min().shift(1)
+    df["d_high_10"] = df['high'].rolling(window=DONCHIAN_SHORT).max().shift(1)
+    df["d_low_10"] = df['low'].rolling(window=DONCHIAN_SHORT).min().shift(1)
+    
+    return df.iloc[-1].to_dict()
+
+# --- CORE V18.2 (MULTI-SOURCE) ---
+
+def run_bot_v18_2():
+    data_hora = get_now_str()
+    print(f"🚀 ROBODERIK V18.2 (MULTI-SOURCE) | {data_hora}")
+    df_trades = load_trades()
+    
+    lucro_total = df_trades['lucro_usd'].sum() if not df_trades.empty else 0.0
     banca_atual = BANCA_INICIAL_REAL + lucro_total
     piso_seguranca = BANCA_INICIAL_REAL * RESERVA_SEGURANCA_PCT
     
@@ -125,48 +154,52 @@ def run_bot_v18_1():
     print(f"📊 NOTÍCIA: {score:.2f} | {zone_name}")
     print(f"   🔒 PERMISSÃO: {permission}")
 
-    print("\n📡 ESCANEANDO MERCADO...")
-    params = {"vs_currency": "usd", "ids": ",".join(COINS_IDS), "sparkline": "false"}
-    try: market = requests.get(f"{BASE_URL}/coins/markets", headers=HEADERS, params=params).json()
-    except: return
+    print("\n📡 ESCANEANDO MERCADO (CG + BINANCE)...")
 
-    for coin in market:
-        sym = coin['symbol'].upper()
-        if not df[(df['symbol'] == sym) & (df['status'] == 'ABERTO')].empty:
+    for coin_id, binance_symbol in COINS_MAP.items():
+        sym = binance_symbol.replace("USDT", "") # Nome limpo (BTC)
+        
+        if not df_trades[(df_trades['symbol'] == sym) & (df_trades['status'] == 'ABERTO')].empty:
             print(f"   🟡 {sym:<5}: Posição Aberta.")
             continue
         
-        t = get_technicals(coin['id'])
-        if not t: continue
+        # Busca dados brutos (Tenta CG, se falhar vai de Binance)
+        df_raw, source = get_market_data_robust(coin_id, binance_symbol)
         
-        price = coin['current_price']
-        adx, rsi, ema, atr = t['adx'], t['rsi'], t['ema200'], t['atr']
-
-        # --- CORREÇÃO DE BUG (CHECK DE NULIDADE) ---
-        if pd.isna(ema) or pd.isna(rsi) or pd.isna(adx):
-            print(f"   ⚠️ {sym:<5}: Histórico insuficiente para calcular indicadores (EMA/RSI).")
+        # Calcula indicadores
+        t = calculate_indicators(df_raw)
+        
+        if not t: 
+            print(f"   🔴 {sym:<5}: Falha de dados em ambas as fontes.")
             continue
         
+        price = t['close']
+        adx, rsi, ema, atr = t['adx'], t['rsi'], t['ema200'], t['atr']
+        
+        # Verifica integridade dos dados antes de operar
+        if pd.isna(ema) or pd.isna(rsi):
+            print(f"   ⚠️ {sym:<5}: Dados insuficientes via {source}.")
+            continue
+
         action, motivo, sl = None, "", 0.0
         
         # --- ESTRATÉGIAS ---
-
-        # 1. PULLBACK (COMPRA BARATO)
+        # 1. PULLBACK
         if price > ema and rsi < 45 and adx > 20:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
                 action, motivo, sl = "LONG_PULLBACK", f"Compra na Baixa (RSI {rsi:.0f})", price - (atr * 2)
         
-        # 2. ROMPIMENTO TÁTICO (10 DIAS)
+        # 2. ROMPIMENTO 10 DIAS
         elif price > t['d_high_10'] and price > ema and adx > 20:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
                 action, motivo, sl = "LONG_BREAKOUT_10", f"Rompimento Tático (${t['d_high_10']:.2f})", price - (atr * 2)
 
-        # 3. ROMPIMENTO MACRO (25 DIAS)
+        # 3. ROMPIMENTO 25 DIAS
         elif price > t['d_high_25'] and price > ema:
             if permission in ["ALL", "BIAS_LONG", "LONG_ONLY"]:
                 action, motivo, sl = "LONG_MACRO", f"Rompimento Histórico (${t['d_high_25']:.2f})", price - (atr * 3)
 
-        # 4. SHORT TÁTICO
+        # 4. SHORT
         elif price < t['d_low_10'] and price < ema and adx > 20:
             if permission in ["ALL", "BIAS_SHORT", "SHORT_ONLY"]:
                 action, motivo, sl = "SHORT_BREAKOUT_10", f"Perda de Fundo Tático (${t['d_low_10']:.2f})", price + (atr * 2)
@@ -177,23 +210,23 @@ def run_bot_v18_1():
 
         if not action:
             dist_10d = ((t['d_high_10'] - price) / price) * 100
-            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}%) ou Pullback (RSI {rsi:.0f} > 45)"
+            motivo = f"Aguardando: Rompimento 10d (+{dist_10d:.1f}%) ou Pullback (RSI {rsi:.0f} > 45) via {source}"
 
         if action:
             alavancagem_final = int(ALAVANCAGEM_PADRAO * lev_mult)
-            print(f"   ✅ {sym:<5}: ABRINDO {action} | Preço: ${price:.2f}")
+            print(f"   ✅ {sym:<5}: ABRINDO {action} | Preço: ${price:.2f} ({source})")
             new_trade = {
                 "id": str(uuid.uuid4())[:8], "data_entrada": data_hora,
                 "symbol": sym, "tipo": action, "preco_entrada": price, "stop_loss": sl,
                 "status": "ABERTO", "resultado": "ANDAMENTO", "lucro_usd": 0.0, 
                 "motivo": motivo, "alavancagem": alavancagem_final, "mes_referencia": get_current_month()
             }
-            df = pd.concat([df, pd.DataFrame([new_trade])], ignore_index=True)
+            df_trades = pd.concat([df_trades, pd.DataFrame([new_trade])], ignore_index=True)
         else:
             print(f"   ⚪ {sym:<5}: {motivo} [P:${price:.2f}]")
 
-    df.to_csv(CSV_FILE, index=False)
-    print("\n💾 Ciclo V18.1 Finalizado.")
+    df_trades.to_csv(CSV_FILE, index=False)
+    print("\n💾 Ciclo V18.2 Finalizado.")
 
 if __name__ == "__main__":
-    run_bot_v18_1()
+    run_bot_v18_2()
