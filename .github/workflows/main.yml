@@ -30,7 +30,7 @@ jobs:
 
       - name: Instalar bibliotecas
         run: |
-          pip install pandas pandas_ta requests feedparser vaderSentiment
+          pip install pandas pandas_ta requests feedparser vaderSentiment pytz
 
       - name: Rodar Robô Simulado
         env:
