@@ -2,7 +2,7 @@ import sys
 import subprocess
 import os
 
-# --- AUTO-INSTALAÇÃO DE DEPENDÊNCIAS ---
+# --- AUTO-INSTALAÇÃO ---
 def install(package):
     try: __import__(package)
     except ImportError:
@@ -75,19 +75,12 @@ def analyze_news():
         return top_score, top_headline
     except: return 0, ""
 
-# NOVA LÓGICA DE ZONAS (V17)
 def get_sentiment_zone(score):
-    """Retorna: (Nome da Zona, Permissao, Alavancagem Multiplier, Stop Multiplier)"""
-    if score <= -0.6:
-        return "🌪️ PÂNICO EXTREMO", "SHORT_ONLY", 1.0, 3.0 # Alavancagem Max, Stop Largo
-    elif -0.6 < score <= -0.2:
-        return "🐻 VIÉS DE BAIXA", "BIAS_SHORT", 0.8, 2.0  # Alavancagem Reduzida, Stop Normal
-    elif -0.2 < score < 0.2:
-        return "⚪ NEUTRO/RUÍDO", "ALL", 1.0, 2.0         # Normal
-    elif 0.2 <= score < 0.6:
-        return "🐮 VIÉS DE ALTA", "BIAS_LONG", 0.8, 2.0    # Alavancagem Reduzida
-    elif score >= 0.6:
-        return "🚀 EUFORIA EXTREMA", "LONG_ONLY", 1.0, 3.0 # Alavancagem Max
+    if score <= -0.6: return "🌪️ PÂNICO EXTREMO", "SHORT_ONLY", 1.0, 3.0
+    elif -0.6 < score <= -0.2: return "🐻 VIÉS DE BAIXA", "BIAS_SHORT", 0.8, 2.0
+    elif -0.2 < score < 0.2: return "⚪ NEUTRO/RUÍDO", "ALL", 1.0, 2.0
+    elif 0.2 <= score < 0.6: return "🐮 VIÉS DE ALTA", "BIAS_LONG", 0.8, 2.0
+    elif score >= 0.6: return "🚀 EUFORIA EXTREMA", "LONG_ONLY", 1.0, 3.0
     return "⚪ NEUTRO", "ALL", 1.0, 2.0
 
 def get_technicals(coin_id):
@@ -103,11 +96,11 @@ def get_technicals(coin_id):
         return df.iloc[-1].to_dict()
     except: return None
 
-# --- CORE V17 ---
+# --- CORE V17.1 (DEBUGGER) ---
 
-def run_bot_v17():
+def run_bot_v17_1():
     data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V17 (GRAVITY ZONES) | {data_hora}")
+    print(f"🚀 ROBODERIK V17.1 (TRANSPARENCY MODE) | {data_hora}")
     df = load_trades()
     
     lucro_total = df['lucro_usd'].sum() if not df.empty else 0.0
@@ -118,13 +111,11 @@ def run_bot_v17():
     print(f"   💰 Banca Atual:   ${banca_atual:.2f} (Piso: ${piso_seguranca:.2f})")
     print("-" * 40)
 
-    # 1. Classificação de Gravidade
     score, manchete = analyze_news()
     zone_name, permission, lev_mult, stop_mult = get_sentiment_zone(score)
     
-    print(f"📊 NOTÍCIA MAIS FORTE: {score:.2f}")
+    print(f"📊 NOTÍCIA: {score:.2f} | {zone_name}")
     print(f"   ⚠️ Manchete: {manchete[:70]}...")
-    print(f"   🌡️ ZONA: {zone_name}")
     print(f"   🔒 PERMISSÃO: {permission}")
 
     print("\n📡 ESCANEANDO MERCADO...")
@@ -146,10 +137,9 @@ def run_bot_v17():
         
         action, motivo, sl = None, "", 0.0
         
-        # --- FILTRO HÍBRIDO BASEADO NA ZONA ---
+        # --- LÓGICA HÍBRIDA ---
         
-        # A. MERCADO LATERAL (GRID)
-        # Só opera Grid se estiver na Zona Neutra (Ruído). Nas outras, é perigoso.
+        # A. GRID (MERCADO LATERAL)
         if adx < ADX_LATERAL_LIMIT and permission == "ALL":
             action = "GRID_NEUTRAL"
             motivo = "Grid Lateral (Zona Neutra)"
@@ -162,7 +152,7 @@ def run_bot_v17():
                 motivo = f"Rompimento Alta ({zone_name})"
                 sl = price - (atr * stop_mult)
             else:
-                motivo = f"Setup Long ignorado (Zona {permission})"
+                motivo = f"Setup Long ignorado pela Zona {permission}"
 
         # C. TENDÊNCIA DE BAIXA (SHORT)
         elif price < d_low and price < ema and adx > ADX_TREND_LIMIT:
@@ -171,20 +161,32 @@ def run_bot_v17():
                 motivo = f"Rompimento Baixa ({zone_name})"
                 sl = price + (atr * stop_mult)
             else:
-                motivo = f"Setup Short ignorado (Zona {permission})"
+                motivo = f"Setup Short ignorado pela Zona {permission}"
         
-        # D. SNIPER DE NOTÍCIA (SEMPRE ENTRA SE O PREÇO CONFIRMAR O SENTIMENTO)
-        elif permission == "LONG_ONLY" and price > ema: # Euforia + Preço acima da média
+        # D. SNIPER DE NOTÍCIA EXTREMA
+        elif permission == "LONG_ONLY" and price > ema:
              action = "SNIPER_LONG"
-             motivo = "Notícia Extrema + Preço Confirmando"
+             motivo = "Euforia Extrema + Preço > EMA"
              sl = price - (atr * stop_mult)
-        elif permission == "SHORT_ONLY" and price < ema: # Pânico + Preço abaixo da média
+        elif permission == "SHORT_ONLY" and price < ema:
              action = "SNIPER_SHORT"
-             motivo = "Notícia Extrema + Preço Confirmando"
+             motivo = "Pânico Extremo + Preço < EMA"
              sl = price + (atr * stop_mult)
         
+        # --- DIAGNÓSTICO DE FALHA (POR QUE NÃO ENTROU?) ---
         else:
-            if not motivo: motivo = "Sem setup ou Preço no canal."
+            infos = f"[ADX:{adx:.0f} | D_High:${d_high:.2f}]"
+            if adx < ADX_LATERAL_LIMIT and permission != "ALL":
+                motivo = f"Grid bloqueado: Viés é {permission} (Exige Neutro) {infos}"
+            elif adx > ADX_TREND_LIMIT:
+                if price <= d_high and price >= d_low:
+                    motivo = f"Preço (${price:.2f}) dentro do canal. {infos}"
+                elif price < ema and price > d_high:
+                    motivo = f"Rompimento de alta s/ confirmação da EMA. {infos}"
+                elif price > ema and price < d_low:
+                    motivo = f"Rompimento de baixa s/ confirmação da EMA. {infos}"
+            else:
+                motivo = f"Zona Morta (ADX {adx:.1f} entre 20-25). Aguardando Força."
 
         if action:
             alavancagem_final = int(ALAVANCAGEM_PADRAO * lev_mult)
@@ -200,7 +202,7 @@ def run_bot_v17():
             print(f"   ⚪ {sym:<5}: {motivo}")
 
     df.to_csv(CSV_FILE, index=False)
-    print("\n💾 Ciclo V17 Finalizado.")
+    print("\n💾 Ciclo V17.1 Finalizado.")
 
 if __name__ == "__main__":
-    run_bot_v17()
+    run_bot_v17_1()
