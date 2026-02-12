@@ -36,9 +36,8 @@ ALAVANCAGEM_PADRAO = 5
 
 # --- PARÂMETROS TÉCNICOS ---
 EMA_FILTER = 200
-ADX_LATERAL_LIMIT = 20 
-ADX_TREND_LIMIT = 20   
-# Mudei para pegar fundo de 10 dias também
+ADX_LATERAL_LIMIT = 25 # Aumentado para aceitar mais laterais
+ADX_TREND_LIMIT = 25   
 DONCHIAN_SHORT = 10          
 
 RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
@@ -72,18 +71,21 @@ def analyze_news():
     except: return 0
 
 def get_sentiment_zone(score):
-    if score <= -0.2: return "🐻 BAIXA", "BIAS_SHORT"
-    elif score >= 0.2: return "🐮 ALTA", "BIAS_LONG"
-    return "⚪ NEUTRO", "ALL"
+    if score <= -0.6: return "🌪️ PÂNICO EXTREMO", "SHORT_ONLY", False
+    elif -0.6 < score <= -0.2: return "🐻 VIÉS DE BAIXA", "BIAS_SHORT", True
+    elif -0.2 < score < 0.2: return "⚪ NEUTRO/RUÍDO", "ALL", True
+    elif 0.2 <= score < 0.6: return "🐮 VIÉS DE ALTA", "BIAS_LONG", True
+    elif score >= 0.6: return "🚀 EUFORIA EXTREMA", "LONG_ONLY", False
+    return "⚪ NEUTRO", "ALL", True
 
-def run_bot_v18_6():
+def run_bot_v19_1():
     data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V18.6 (FULL STRATEGY) | {data_hora}")
+    print(f"🚀 ROBODERIK V19.1 (GRID EXAUSTÃO) | {data_hora}")
     df_trades = load_trades()
     
     score = analyze_news()
-    zone, permission = get_sentiment_zone(score)
-    print(f"📊 SENTIMENTO: {score:.2f} ({zone}) | PERMISSÃO: {permission}")
+    zone, permission, allow_grid = get_sentiment_zone(score)
+    print(f"📊 SENTIMENTO: {score:.2f} ({zone}) | GRID: {'LIBERADO' if allow_grid else 'BLOQUEADO'}")
     print("-" * 60)
 
     for sym, keys in COINS_MAP.items():
@@ -102,13 +104,11 @@ def run_bot_v18_6():
             df = hist.reset_index()
             df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close"})
             
-            # --- CÁLCULO DE INDICADORES ---
+            # Indicadores
             df["adx"] = ta.adx(df['high'], df['low'], df['close'])["ADX_14"]
             df["rsi"] = ta.rsi(df["close"], length=14)
             df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
             df["atr"] = ta.atr(df['high'], df['low'], df['close'])
-            
-            # Canais de 10 dias (Topo e Fundo)
             df["high_10"] = df['high'].rolling(window=10).max().shift(1)
             df["low_10"]  = df['low'].rolling(window=10).min().shift(1)
             
@@ -118,56 +118,46 @@ def run_bot_v18_6():
             h10, l10 = t['high_10'], t['low_10']
             
             print(f"🔍 {sym:<5} | P: ${price:,.2f} | EMA: ${ema:,.2f}")
-            print(f"      [IND] RSI: {rsi:.1f} | ADX: {adx:.1f} | Topo10d: ${h10:,.2f} | Fundo10d: ${l10:,.2f}")
+            print(f"      [IND] RSI: {rsi:.1f} | ADX: {adx:.1f}")
 
             action, motivo, sl = None, "", 0.0
             
-            # --- LÓGICA DE DECISÃO COMPLETA ---
+            # --- LÓGICA V19.1 ---
             
-            # 1. MODO GRID (Lateral)
-            if adx < ADX_LATERAL_LIMIT:
-                if permission == "ALL":
-                    action = "GRID_NEUTRAL"
-                    motivo = f"Lateral (ADX {adx:.1f})"
-                    sl = price - (atr * 3)
-                else:
-                    motivo = f"Grid bloqueado por notícia ({permission})"
+            # 1. GRID PADRÃO (Mercado sem tendência)
+            if adx < ADX_LATERAL_LIMIT and allow_grid:
+                action = "GRID_NEUTRAL"
+                motivo = f"Lateral Padrão (ADX {adx:.1f})"
+                sl = price - (atr * 3)
 
-            # 2. MODO TENDÊNCIA (Alta ou Baixa)
+            # 2. GRID DE EXAUSTÃO (Nova Lógica para ETH!)
+            # Se RSI estiver extremo (<30 ou >70), o mercado parou para respirar -> GRID
+            elif (rsi < 30 or rsi > 70) and allow_grid:
+                action = "GRID_EXHAUSTION"
+                motivo = f"Exaustão de Tendência (RSI {rsi:.1f} Extremo)"
+                sl = price - (atr * 3) # Stop largo
+
+            # 3. TENDÊNCIA (Se não for Grid)
             elif adx >= ADX_TREND_LIMIT:
-                
-                # A. TENDÊNCIA DE ALTA (Price > EMA)
-                if price > ema:
-                    if rsi < 45: # Pullback
-                        action, motivo = "LONG_PULLBACK", f"Compra correção (RSI {rsi:.1f})"
-                        sl = price - (atr * 2)
-                    elif price > h10: # Breakout
-                        action, motivo = "LONG_BREAKOUT_10", "Rompimento Topo 10d"
-                        sl = price - (atr * 2)
-                    else:
+                if price > ema: # Alta
+                    if rsi < 45: 
+                        action, motivo, sl = "LONG_PULLBACK", f"Compra Dip (RSI {rsi:.1f})", price - (atr*2)
+                    elif price > h10: 
+                        action, motivo, sl = "LONG_BREAKOUT", "Rompimento Topo 10d", price - (atr*2)
+                    else: 
                         motivo = f"Tendência Alta s/ gatilho (Topo: ${h10:.2f})"
-
-                # B. TENDÊNCIA DE BAIXA (Price < EMA) -> AGORA IMPLEMENTADO!
-                else:
-                    if rsi > 55: # Pullback de Baixa (Repique)
-                        action, motivo = "SHORT_PULLBACK", f"Venda no repique (RSI {rsi:.1f})"
-                        sl = price + (atr * 2)
-                    elif price < l10: # Breakout de Baixa (Perder fundo)
-                        action, motivo = "SHORT_BREAKOUT_10", "Perda de Fundo 10d"
-                        sl = price + (atr * 2)
+                else: # Baixa
+                    if price < l10:
+                        action, motivo, sl = "SHORT_BREAKOUT", "Perda de Fundo 10d", price + (atr*2)
                     else:
                         motivo = f"Tendência Baixa s/ gatilho (Fundo: ${l10:.2f})"
-            
-            # --- FILTRO FINAL DE NOTÍCIAS ---
-            if action:
-                if "LONG" in action and permission == "BIAS_SHORT":
-                    action = None; motivo = f"LONG bloqueado (Viés Baixista)"
-                if "SHORT" in action and permission == "BIAS_LONG":
-                    action = None; motivo = f"SHORT bloqueado (Viés Altista)"
-                if "GRID" in action and permission != "ALL":
-                    action = None; motivo = f"GRID bloqueado (Viés Definido)"
 
-            # EXECUÇÃO
+            # Filtros de Notícia
+            if action and "GRID" not in action:
+                if "LONG" in action and permission == "BIAS_SHORT": action = None; motivo = "Long vetado (News)"
+                if "SHORT" in action and permission == "BIAS_LONG": action = None; motivo = "Short vetado (News)"
+
+            # Execução
             if action:
                 print(f"      ✅ AÇÃO: {action} disparada! ({motivo})")
                 new_trade = {
@@ -188,4 +178,4 @@ def run_bot_v18_6():
     print("\n💾 Ciclo Finalizado e Planilha Salva.")
 
 if __name__ == "__main__":
-    run_bot_v18_6()
+    run_bot_v19_1()
