@@ -32,14 +32,13 @@ except: FUSO = pytz.utc
 # --- GESTÃO DE BANCA ---
 BANCA_INICIAL_REAL = 1200.0  
 RESERVA_SEGURANCA_PCT = 0.15 
+RISCO_POR_TRADE_PCT = 0.20   
+MAX_VALOR_TRADE = 100000.0   
 ALAVANCAGEM_PADRAO = 5 
 
 # --- PARÂMETROS TÉCNICOS ---
 EMA_FILTER = 200
-# RSI GATILHOS (Conforme sua estratégia)
-RSI_OVERSOLD = 35      # Abaixo disso, não vende (fundo)
-RSI_BOUNCE_ENTRY = 45  # Acima disso, começa a procurar Short no repique
-RSI_OVERBOUGHT = 70    # Acima disso, Short agressivo
+DONCHIAN_SHORT = 10          
 
 RSS_FEEDS = ["https://cointelegraph.com/rss", "https://www.coindesk.com/arc/outboundfeeds/rss/"]
 COINS_MAP = {
@@ -53,11 +52,18 @@ def get_now_str(): return datetime.now(FUSO).strftime("%d/%m/%Y %H:%M:%S")
 def get_current_month(): return datetime.now(FUSO).strftime('%Y-%m')
 
 def load_trades():
-    if os.path.exists(CSV_FILE): 
+    # Adicionada coluna 'valor_investido' na estrutura
+    cols = ["id", "data_entrada", "symbol", "tipo", "valor_investido", "preco_entrada", "stop_loss", "status", "resultado", "data_saida", "preco_saida", "lucro_usd", "motivo", "alavancagem", "mes_referencia"]
+    
+    if os.path.exists(CSV_FILE):
         df = pd.read_csv(CSV_FILE)
-        if 'mes_referencia' not in df.columns: df['mes_referencia'] = get_current_month()
+        # Se a coluna nova não existir, cria ela preenchida com 0
+        if 'valor_investido' not in df.columns:
+            df['valor_investido'] = 0.0
+        if 'mes_referencia' not in df.columns:
+            df['mes_referencia'] = get_current_month()
         return df
-    return pd.DataFrame(columns=["id", "data_entrada", "symbol", "tipo", "preco_entrada", "stop_loss", "status", "resultado", "data_saida", "preco_saida", "lucro_usd", "motivo", "alavancagem", "mes_referencia"])
+    return pd.DataFrame(columns=cols)
 
 def analyze_news():
     analyzer = SentimentIntensityAnalyzer()
@@ -76,131 +82,107 @@ def get_sentiment_zone(score):
     elif score >= 0.2: return "🐮 ALTA", "BIAS_LONG"
     return "⚪ NEUTRO", "ALL"
 
-def get_data_indicators(symbol_yf):
-    try:
-        ticker = yf.Ticker(symbol_yf)
-        hist = ticker.history(period="2y", interval="1d")
-        if len(hist) < 200: return None
-        
-        df = hist.reset_index()
-        df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close"})
-        
-        df["adx"] = ta.adx(df['high'], df['low'], df['close'])["ADX_14"]
-        df["rsi"] = ta.rsi(df["close"], length=14)
-        df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
-        df["atr"] = ta.atr(df['high'], df['low'], df['close'])
-        df["low_10"] = df['low'].rolling(window=10).min().shift(1)
-        
-        return df.iloc[-1]
-    except: return None
-
-# --- CORE V20 (DEAD CAT SNIPER) ---
-
-def run_bot_v20():
+def run_bot_v19():
     data_hora = get_now_str()
-    print(f"🚀 ROBODERIK V20 (SHORT THE BOUNCE) | {data_hora}")
+    print(f"🚀 ROBODERIK V19 (COM GESTÃO FINANCEIRA) | {data_hora}")
     df_trades = load_trades()
     
-    score = analyze_news()
-    zone, permission = get_sentiment_zone(score)
-    print(f"📊 NOTÍCIA: {score:.2f} ({zone})")
+    # CÁLCULO FINANCEIRO
+    lucro_total = df_trades['lucro_usd'].sum() if not df_trades.empty else 0.0
+    banca_atual = BANCA_INICIAL_REAL + lucro_total
+    piso_seguranca = BANCA_INICIAL_REAL * RESERVA_SEGURANCA_PCT
+    capital_livre = max(0, banca_atual - piso_seguranca)
     
-    # 1. ANÁLISE PRIMÁRIA: O QUE O BITCOIN ESTÁ FAZENDO?
-    print("🔎 Verificando a 'Mãe' (BTC)...")
-    btc_data = get_data_indicators(COINS_MAP["BTC"]["yf"])
-    btc_trend = "NEUTRO"
-    
-    if btc_data is not None:
-        if btc_data['close'] < btc_data['ema200']:
-            btc_trend = "URSO (Baixa)"
-            print(f"   📉 BTC em Tendência de Baixa (Abaixo da EMA200). Alts liberadas para Short.")
-        else:
-            btc_trend = "TOURO (Alta)"
-            print(f"   📈 BTC em Tendência de Alta. Shorts em Alts são perigosos.")
+    # Valor Base para Trades (20% do livre)
+    valor_base_trade = min(capital_livre * RISCO_POR_TRADE_PCT, MAX_VALOR_TRADE)
+
+    print(f"\n🏆 --- DASHBOARD FINANCEIRO ---")
+    print(f"   💰 Banca Total:   ${banca_atual:.2f}")
+    print(f"   🔒 Piso Seguro:   ${piso_seguranca:.2f}")
+    print(f"   💸 Mão Base:      ${valor_base_trade:.2f} (por operação)")
     print("-" * 60)
 
-    # 2. SCANNER DAS MOEDAS
+    score = analyze_news()
+    zone, permission = get_sentiment_zone(score)
+    print(f"📊 SENTIMENTO: {score:.2f} ({zone}) | PERMISSÃO: {permission}")
+
     for sym, keys in COINS_MAP.items():
         if not df_trades[(df_trades['symbol'] == sym) & (df_trades['status'] == 'ABERTO')].empty:
             print(f"   🟡 {sym:<5}: Posição já aberta.")
             continue
         
-        t = get_data_indicators(keys['yf'])
-        if t is None:
-            print(f"   🔴 {sym}: Erro de dados.")
-            continue
-
-        price, rsi, adx, ema, atr, l10 = t['close'], t['rsi'], t['adx'], t['ema200'], t['atr'], t['low_10']
-        
-        print(f"🔍 {sym:<5} | P: ${price:,.2f} | EMA: ${ema:,.2f}")
-        print(f"      [IND] RSI: {rsi:.1f} (Gatilho Short: >{RSI_BOUNCE_ENTRY}) | ADX: {adx:.1f}")
-
-        action, motivo, sl = None, "", 0.0
-        
-        # --- LÓGICA ESTRATÉGICA V20 ---
-
-        # CENÁRIO 1: TENDÊNCIA DE BAIXA (Price < EMA) - FOCO DA V20
-        if price < ema:
+        try:
+            ticker = yf.Ticker(keys['yf'])
+            df = ticker.history(period="1y", interval="1d").reset_index()
+            if df.empty: continue
             
-            # A. PROTEÇÃO: "NÃO VENDA O FUNDO"
-            if rsi < RSI_OVERSOLD:
-                motivo = f"🚫 Venda Bloqueada: RSI Sobrevendido ({rsi:.1f}). Aguardando repique."
-                # Aqui poderíamos ativar o Grid Long da V19.1 para pegar o repique
-                if permission != "BIAS_SHORT": # Se a notícia não for Pânico Total
-                    action = "GRID_EXHAUSTION"
-                    motivo = f"Scalp de Repique (RSI {rsi:.1f} < 35)"
-                    sl = price - (atr * 3)
-
-            # B. GATILHO: "SHORT THE BOUNCE" (Venda no Repique)
-            elif rsi > RSI_BOUNCE_ENTRY:
-                # Confirmação do BTC (Só shorta se BTC também estiver fraco/neutro ou caindo)
-                if "URSO" in btc_trend or "NEUTRO" in btc_trend:
-                    action = "SHORT_BOUNCE"
-                    motivo = f"Repique Identificado (RSI {rsi:.1f} recuperou). Venda na resistência."
-                    sl = price + (atr * 2.5) # Stop acima do 'pulo do gato'
-                else:
-                    motivo = "Setup Short válido, mas BTC está forte (Risco de arrasto)."
+            df["adx"] = ta.adx(df['high'], df['low'], df['close'])["ADX_14"]
+            df["rsi"] = ta.rsi(df["close"], length=14)
+            df["ema200"] = ta.ema(df["close"], length=EMA_FILTER)
+            df["atr"] = ta.atr(df['high'], df['low'], df['close'])
+            df["high_10"] = df['high'].rolling(window=10).max().shift(1)
             
-            # C. GATILHO: PERDA DE FUNDO (Breakout)
-            elif price < l10:
-                # Só vende rompimento de fundo se o RSI não estiver extremo
-                if rsi > RSI_OVERSOLD:
-                    action = "SHORT_BREAKOUT"
-                    motivo = "Perda de Suporte 10d (Confirmação de Queda)"
-                    sl = price + (atr * 2)
-                else:
-                    motivo = "Rompeu fundo, mas RSI esticado. Perigoso vender."
+            t = df.iloc[-1]
+            price = t['close']
+            rsi, adx, ema, atr, h10 = t['rsi'], t['adx'], t['ema200'], t['atr'], t['high_10']
             
-            else:
-                motivo = f"Em tendência de baixa, mas no meio do caminho (RSI {rsi:.1f})."
-
-        # CENÁRIO 2: TENDÊNCIA DE ALTA (Price > EMA)
-        elif price > ema:
-            if permission == "BIAS_SHORT":
-                motivo = "Long bloqueado: Notícias indicam queda macro (BTC 50k)."
-            elif rsi < 45 and adx > 20:
-                action = "LONG_PULLBACK"
-                motivo = "Correção em tendência de alta"
+            action, motivo = None, ""
+            trade_size = valor_base_trade # Tamanho padrão
+            
+            # --- ESTRATÉGIAS ---
+            
+            # 1. PULLBACK (TENDÊNCIA)
+            if price > ema and rsi < 45 and adx > 20:
+                action, motivo = "LONG_PULLBACK", f"Compra Correção (RSI {rsi:.1f})"
+                trade_size = valor_base_trade # 100% da mão
                 sl = price - (atr * 2)
-            else:
-                motivo = "Tendência de Alta sem gatilho de entrada."
 
-        # EXECUÇÃO
-        if action:
-            print(f"      ✅ AÇÃO: {action} disparada! ({motivo})")
-            new_trade = {
-                "id": str(uuid.uuid4())[:8], "data_entrada": data_hora,
-                "symbol": sym, "tipo": action, "preco_entrada": price, "stop_loss": sl,
-                "status": "ABERTO", "resultado": "ANDAMENTO", "lucro_usd": 0.0, 
-                "motivo": motivo, "alavancagem": ALAVANCAGEM_PADRAO, "mes_referencia": get_current_month()
-            }
-            df_trades = pd.concat([df_trades, pd.DataFrame([new_trade])], ignore_index=True)
-        else:
-            print(f"      ⚪ PLANO: {motivo}")
-        print("-" * 60)
+            # 2. ROMPIMENTO (TENDÊNCIA)
+            elif price > h10 and adx > 20:
+                action, motivo = "LONG_BREAKOUT_10", f"Rompimento Topo 10d"
+                trade_size = valor_base_trade # 100% da mão
+                sl = price - (atr * 2)
+            
+            # 3. EXAUSTÃO (GRID/LATERAL)
+            elif adx < 20 and (rsi < 30 or rsi > 70):
+                if rsi < 30:
+                    action, motivo = "GRID_OVERSOLD", f"Exaustão Venda (RSI {rsi:.1f})"
+                    sl = price - (atr * 3)
+                trade_size = valor_base_trade * 0.4 # 40% da mão (Mais seguro no grid)
+
+            # --- EXECUÇÃO ---
+            if action:
+                if permission == "BIAS_SHORT" and "LONG" in action:
+                    print(f"   ⚪ {sym:<5}: Setup {action} bloqueado por Notícia Baixista.")
+                else:
+                    print(f"   ✅ {sym:<5}: ABRINDO {action}")
+                    print(f"      💵 Investindo: ${trade_size:.2f} (Lev: {ALAVANCAGEM_PADRAO}x)")
+                    
+                    new_trade = {
+                        "id": str(uuid.uuid4())[:8],
+                        "data_entrada": data_hora,
+                        "symbol": sym, 
+                        "tipo": action, 
+                        "valor_investido": round(trade_size, 2), # SALVANDO O VALOR!
+                        "preco_entrada": price, 
+                        "stop_loss": sl,
+                        "status": "ABERTO", 
+                        "resultado": "ANDAMENTO", 
+                        "lucro_usd": 0.0, 
+                        "motivo": motivo, 
+                        "alavancagem": ALAVANCAGEM_PADRAO, 
+                        "mes_referencia": get_current_month()
+                    }
+                    df_trades = pd.concat([df_trades, pd.DataFrame([new_trade])], ignore_index=True)
+            else:
+                dist_topo = ((h10/price)-1)*100
+                print(f"   🔍 {sym:<5}: Aguardando RSI < 45 ({rsi:.0f}) ou Rompimento +{dist_topo:.1f}%")
+
+        except Exception as e:
+            print(f"   🔴 {sym}: Erro: {e}")
 
     df_trades.to_csv(CSV_FILE, index=False)
     print("\n💾 Ciclo Finalizado.")
 
 if __name__ == "__main__":
-    run_bot_v20()
+    run_bot_v19()
