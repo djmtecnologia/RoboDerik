@@ -30,7 +30,7 @@ jobs:
 
       - name: Instalar bibliotecas
         run: |
-          # Adicionei 'ccxt' que é vital para conectar na Binance
+          # ccxt é vital para conectar na Binance
           pip install ccxt pandas pandas_ta numpy pytz requests
 
       - name: Rodar Robô Real (V55)
@@ -40,14 +40,16 @@ jobs:
           BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY }}
         run: python bot.py
 
-      - name: Salvar Memória do Robô (Commit)
+      - name: Salvar Memória do Robô (Commit Seguro)
         run: |
           git config --global user.name 'RoboDerik Bot'
           git config --global user.email 'bot@djmtecnologia.com'
           
-          # O V55 salva tudo no estado.json (Martingale, Quarentena, Banca)
-          # Se não salvar isso, ele reseta e perde dinheiro!
-          git add estado.json
-          
-          # Comando seguro: só faz commit se houver mudança no arquivo
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🧠 Atualizando Estado do Martingale [skip ci]" && git push)
+          # Verifica se o arquivo existe ANTES de tentar adicionar
+          if [ -f estado.json ]; then
+            git add estado.json
+            # Só faz commit se houver mudança real no arquivo
+            git diff --quiet && git diff --staged --quiet || (git commit -m "🧠 Atualizando Estado do Martingale [skip ci]" && git push)
+          else
+            echo "⚠️ O arquivo estado.json não foi criado nesta execução. Pulando salvamento."
+          fi
