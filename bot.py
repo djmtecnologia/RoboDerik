@@ -22,7 +22,6 @@ import pandas_ta as ta
 import pytz
 
 # --- CONFIGURAÇÕES V55 (SIMULAÇÃO YFINANCE) ---
-# Símbolos no Yahoo Finance tem sufixo diferente
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
     "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
@@ -42,13 +41,8 @@ MAX_TRADES_DIA = 5
 STATE_FILE = "estado.json"
 
 def carregar_estado():
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r") as f:
-                return json.load(f)
-        except: pass
-            
-    return {
+    # Estrutura padrão completa
+    estado = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
         "martingale_idx": 0,
@@ -56,8 +50,25 @@ def carregar_estado():
         "data_hoje": datetime.now().strftime("%Y-%m-%d"),
         "pnl_hoje": 0.0,
         "em_quarentena": False,
-        "posicao_aberta": None # Guarda o trade simulado
+        "posicao_aberta": None 
     }
+
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                salvo = json.load(f)
+                # Atualiza o estado padrão com o que foi salvo
+                # Se faltar alguma chave no salvo, o padrão prevalece e evita o erro
+                estado.update(salvo)
+                
+                # Garante compatibilidade se o arquivo antigo tiver chaves com nomes diferentes
+                if "banca_inicial" in salvo and "banca_atual" not in salvo:
+                    estado["banca_atual"] = salvo["banca_inicial"]
+                    
+        except Exception as e:
+            print(f"⚠️ Erro ao ler estado anterior: {e}. Usando novo.")
+            
+    return estado
 
 def salvar_estado(estado):
     try:
@@ -93,6 +104,8 @@ def run_bot():
     print("🚀 INICIANDO ROBODERIK V55 (SIMULAÇÃO REAL)...")
     estado = carregar_estado()
     
+    print(f"💰 Banca: ${estado['banca_atual']:.2f} | Trades Hoje: {estado['trades_hoje']}")
+
     # Reset Diário
     hoje = datetime.now().strftime("%Y-%m-%d")
     if estado["data_hoje"] != hoje:
@@ -102,7 +115,7 @@ def run_bot():
         print("📅 Novo dia iniciado.")
 
     # --- 1. VERIFICAR POSIÇÃO ABERTA (TP/SL) ---
-    if estado["posicao_aberta"]:
+    if estado.get("posicao_aberta"): # Usa .get para segurança extra
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
         print(f"👀 Monitorando posição em {symbol}...")
@@ -164,7 +177,6 @@ def run_bot():
             estado["em_quarentena"] = True
             salvar_estado(estado)
         # Na simulação, continuamos operando mas marcamos como quarentena para saber
-        # Se quiser parar total, descomente o return abaixo
         # return 
 
     limite_perda = -(estado["banca_atual"] * STOP_LOSS_DIARIO_PERC)
@@ -177,8 +189,8 @@ def run_bot():
         return
 
     # --- 3. PROCURAR NOVAS ENTRADAS ---
-    if estado["posicao_aberta"] is None:
-        print(f"🔎 Escaneando mercado (Banca: ${estado['banca_atual']:.2f})...")
+    if estado.get("posicao_aberta") is None:
+        print(f"🔎 Escaneando mercado...")
         
         for symbol in SYMBOL_MAP.keys():
             data = obter_dados_yfinance(symbol)
