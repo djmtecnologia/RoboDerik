@@ -84,26 +84,41 @@ def obter_dados_yfinance(symbol):
         
         if df.empty: return None
         
-        # Tratamento para MultiIndex (Pandas novo)
+        # Tratamento Robusto para MultiIndex (Problema comum do yfinance)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
             
-        df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
+        # Renomeia para garantir padrão (algumas versões vem como 'Adj Close')
+        df = df.rename(columns={
+            "Open": "open", "High": "high", "Low": "low", 
+            "Close": "close", "Volume": "volume", "Adj Close": "close"
+        })
         
+        # Garante que os nomes das colunas estão em minúsculo
+        df.columns = [c.lower() for c in df.columns]
+
         # Indicadores V55
+        # Verifica se temos dados suficientes para calcular (mínimo 20 velas)
+        if len(df) < 20: return None
+
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
         df['rsi'] = ta.rsi(df['close'], length=14)
         
-        # Bandas de Bollinger (para refinar entrada)
+        # --- CORREÇÃO DO ERRO BBL ---
+        # Em vez de chamar pelo nome 'BBL_20_2.0', chamamos pelo índice numérico
         bb = ta.bbands(df['close'], length=20, std=2)
-        df['lower'] = bb['BBL_20_2.0']
-        df['upper'] = bb['BBU_20_2.0']
+        if bb is not None:
+            df['lower'] = bb.iloc[:, 0] # A 1ª coluna é sempre a Banda Inferior
+            df['upper'] = bb.iloc[:, 2] # A 3ª coluna é sempre a Banda Superior
+        else:
+            return None
         
         return df.iloc[-1]
     except Exception as e:
-        print(f"⚠️ Erro ao baixar {symbol}: {e}")
+        # Imprime o erro detalhado para ajudar no debug se acontecer de novo
+        print(f"⚠️ Erro ao processar {symbol}: {e}")
         return None
-
+        
 def run_bot():
     print("🚀 INICIANDO ROBODERIK V55 (SIMULAÇÃO YFINANCE)...")
     estado = carregar_estado()
