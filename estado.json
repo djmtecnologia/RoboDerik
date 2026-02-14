@@ -1,0 +1,10 @@
+{
+    "banca_inicial": 60.0,
+    "pico_banca": 60.0,
+    "martingale_idx": 0,
+    "trades_hoje": 0,
+    "data_hoje": "2026-02-14",
+    "pnl_hoje": 0.0,
+    "em_quarentena": false,
+    "ultima_banca": 60.0
+}
