@@ -6,33 +6,37 @@ import time
 from datetime import datetime
 import traceback
 
-# --- AUTO-INSTALAÇÃO DE DEPENDÊNCIAS ---
+# --- AUTO-INSTALAÇÃO ---
 def install(package):
     try:
         __import__(package)
     except ImportError:
         subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
-for lib in ["ccxt", "pandas", "pandas_ta", "numpy", "pytz"]:
+for lib in ["yfinance", "pandas", "pandas_ta", "numpy", "pytz"]:
     install(lib)
 
-import ccxt
+import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import pytz
 
-# --- CONFIGURAÇÕES V55 (REAL TRADING) ---
-SYMBOL_LIST = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT"]
+# --- CONFIGURAÇÕES V55 (SIMULAÇÃO YFINANCE) ---
+# Símbolos no Yahoo Finance tem sufixo diferente
+SYMBOL_MAP = {
+    "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
+    "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
+}
 TIMEFRAME = "15m"
 ALAVANCAGEM = 3
-PERCENTUAL_MAO_BASE = 0.10  # 10% da banca
+PERCENTUAL_MAO_BASE = 0.10
 MARTINGALE_LEVELS = [1.0, 2.5, 5.5, 10.5]
 
-TARGET_TP = 0.020 
-TARGET_SL = 0.015 
+TARGET_TP = 0.020
+TARGET_SL = 0.015
 
-STOP_LOSS_DIARIO_PERC = 0.20 
-STOP_DRAWDOWN_GLOBAL = 0.25 
+STOP_LOSS_DIARIO_PERC = 0.20
+STOP_DRAWDOWN_GLOBAL = 0.25
 MAX_TRADES_DIA = 5
 
 STATE_FILE = "estado.json"
@@ -42,55 +46,39 @@ def carregar_estado():
         try:
             with open(STATE_FILE, "r") as f:
                 return json.load(f)
-        except:
-            pass # Se arquivo estiver corrompido, recria
+        except: pass
             
-    # Estado padrão (Primeira execução)
     return {
-        "banca_inicial": 60.0,
+        "banca_atual": 60.0,
         "pico_banca": 60.0,
         "martingale_idx": 0,
         "trades_hoje": 0,
         "data_hoje": datetime.now().strftime("%Y-%m-%d"),
         "pnl_hoje": 0.0,
         "em_quarentena": False,
-        "ultima_banca": 60.0
+        "posicao_aberta": None # Guarda o trade simulado
     }
 
 def salvar_estado(estado):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(estado, f, indent=4)
-        print("💾 Estado salvo com sucesso.")
     except Exception as e:
         print(f"❌ Erro ao salvar estado: {e}")
 
-def conectar_binance():
-    api_key = os.environ.get("BINANCE_API_KEY")
-    secret_key = os.environ.get("BINANCE_SECRET_KEY")
-    
-    if not api_key or not secret_key:
-        print("❌ ERRO CRÍTICO: API Keys não configuradas nos Secrets.")
-        # Não damos exit aqui para permitir que o 'finally' salve o estado vazio se necessário
-        return None
-
+def obter_dados_yfinance(symbol):
     try:
-        exchange = ccxt.binance({
-            'apiKey': api_key,
-            'secret': secret_key,
-            'options': {'defaultType': 'future'}
-        })
-        return exchange
-    except Exception as e:
-        print(f"❌ Erro ao instanciar exchange: {e}")
-        return None
-
-def obter_dados(exchange, symbol):
-    try:
-        bars = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=100)
-        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        # Baixa 5 dias para garantir indicadores
+        df = yf.download(symbol, period="5d", interval="15m", progress=False)
+        if df.empty: return None
         
-        # Indicadores
+        # Ajuste para MultiIndex do Pandas novo
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
+        
+        # Indicadores V55
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
         df['rsi'] = ta.rsi(df['close'], length=14)
         bb = ta.bbands(df['close'], length=20, std=2)
@@ -102,121 +90,150 @@ def obter_dados(exchange, symbol):
         return None
 
 def run_bot():
-    print("🚀 INICIANDO ROBODERIK V55 (REAL)...")
-    
+    print("🚀 INICIANDO ROBODERIK V55 (SIMULAÇÃO REAL)...")
     estado = carregar_estado()
     
-    # BLOCO TRY/FINALLY: Garante que o estado seja salvo mesmo se der erro no meio
-    try:
-        exchange = conectar_binance()
-        if not exchange:
-            return # Sai, mas vai pro finally salvar o estado inicial
+    # Reset Diário
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    if estado["data_hoje"] != hoje:
+        estado["data_hoje"] = hoje
+        estado["trades_hoje"] = 0
+        estado["pnl_hoje"] = 0.0
+        print("📅 Novo dia iniciado.")
 
-        # Verificar Banca
-        try:
-            balance = exchange.fetch_balance()
-            banca_atual = float(balance['total']['USDT'])
-            print(f"💰 Banca Atual: ${banca_atual:.2f}")
-        except Exception as e:
-            print(f"❌ Erro ao ler saldo (Check API Permissions): {e}")
-            return # Sai, mas salva
-
-        # Atualizar PnL e Martingale
-        pnl_ciclo = banca_atual - estado["ultima_banca"]
-        hoje = datetime.now().strftime("%Y-%m-%d")
+    # --- 1. VERIFICAR POSIÇÃO ABERTA (TP/SL) ---
+    if estado["posicao_aberta"]:
+        pos = estado["posicao_aberta"]
+        symbol = pos["symbol"]
+        print(f"👀 Monitorando posição em {symbol}...")
         
-        if estado["data_hoje"] != hoje:
-            estado["data_hoje"] = hoje
-            estado["trades_hoje"] = 0
-            estado["pnl_hoje"] = 0.0
-            print("📅 Novo dia iniciado.")
+        dados = obter_dados_yfinance(symbol)
+        if dados is None: 
+            print("⚠️ Sem dados para monitorar.")
+            return
 
-        if abs(pnl_ciclo) > 0.5:
-            estado["pnl_hoje"] += pnl_ciclo
-            print(f"🔔 Variação detectada: ${pnl_ciclo:.2f}")
-            if pnl_ciclo > 0:
+        atual = dados['close']
+        lucro = 0
+        fechou = False
+        motivo = ""
+
+        # Lógica de Saída Simulada
+        if pos["tipo"] == "buy":
+            if atual >= pos["tp"]:
+                lucro = (pos["valor_investido"] * ALAVANCAGEM * TARGET_TP)
+                fechou = True; motivo = "TAKE PROFIT ✅"
+            elif atual <= pos["sl"]:
+                lucro = -(pos["valor_investido"] * ALAVANCAGEM * TARGET_SL)
+                fechou = True; motivo = "STOP LOSS 🔻"
+        else: # Sell
+            if atual <= pos["tp"]:
+                lucro = (pos["valor_investido"] * ALAVANCAGEM * TARGET_TP)
+                fechou = True; motivo = "TAKE PROFIT ✅"
+            elif atual >= pos["sl"]:
+                lucro = -(pos["valor_investido"] * ALAVANCAGEM * TARGET_SL)
+                fechou = True; motivo = "STOP LOSS 🔻"
+
+        if fechou:
+            estado["banca_atual"] += lucro
+            estado["pnl_hoje"] += lucro
+            estado["posicao_aberta"] = None # Limpa posição
+            
+            print(f"{motivo} | PnL: ${lucro:.2f} | Banca: ${estado['banca_atual']:.2f}")
+            
+            if lucro > 0:
                 estado["martingale_idx"] = 0
-                if estado["em_quarentena"]: estado["em_quarentena"] = False
+                if estado["em_quarentena"]: 
+                    estado["em_quarentena"] = False
+                    print("🛡️ Saiu da Quarentena!")
             else:
                 estado["martingale_idx"] = min(estado["martingale_idx"] + 1, 3)
+                print(f"⚠️ Martingale subiu para Nível {estado['martingale_idx']}")
+            
+            if estado["banca_atual"] > estado["pico_banca"]:
+                estado["pico_banca"] = estado["banca_atual"]
+            
+            salvar_estado(estado)
+            return # Encerra execução para não abrir outro imediatamente
 
-        if banca_atual > estado["pico_banca"]: estado["pico_banca"] = banca_atual
-        estado["ultima_banca"] = banca_atual
-
-        # Verificações de Segurança
-        drawdown = (estado["pico_banca"] - banca_atual) / estado["pico_banca"]
-        if drawdown >= STOP_DRAWDOWN_GLOBAL:
-            estado["em_quarentena"] = True
+    # --- 2. VERIFICAÇÕES DE SEGURANÇA ---
+    drawdown = (estado["pico_banca"] - estado["banca_atual"]) / estado["pico_banca"]
+    
+    if drawdown >= STOP_DRAWDOWN_GLOBAL:
+        if not estado["em_quarentena"]:
             print(f"🛑 ALERTA: Drawdown {drawdown*100:.2f}%. Entrando em Quarentena.")
-            return
+            estado["em_quarentena"] = True
+            salvar_estado(estado)
+        # Na simulação, continuamos operando mas marcamos como quarentena para saber
+        # Se quiser parar total, descomente o return abaixo
+        # return 
 
-        if estado["em_quarentena"]:
-            print("💤 Robô em Quarentena.")
-            return
+    limite_perda = -(estado["banca_atual"] * STOP_LOSS_DIARIO_PERC)
+    if estado["pnl_hoje"] <= limite_perda:
+        print(f"🛑 Stop Loss Diário atingido (${estado['pnl_hoje']:.2f}).")
+        return
 
-        limite_perda = -(banca_atual * STOP_LOSS_DIARIO_PERC)
-        if estado["pnl_hoje"] <= limite_perda:
-            print("🛑 Stop Loss Diário atingido.")
-            return
+    if estado["trades_hoje"] >= MAX_TRADES_DIA:
+        print(f"⏸️ Limite de trades diários ({MAX_TRADES_DIA}) atingido.")
+        return
 
-        if estado["trades_hoje"] >= MAX_TRADES_DIA:
-            print("⏸️ Limite de trades diários atingido.")
-            return
+    # --- 3. PROCURAR NOVAS ENTRADAS ---
+    if estado["posicao_aberta"] is None:
+        print(f"🔎 Escaneando mercado (Banca: ${estado['banca_atual']:.2f})...")
+        
+        for symbol in SYMBOL_MAP.keys():
+            data = obter_dados_yfinance(symbol)
+            if data is None: continue
 
-        # Escaneamento
-        print("🔎 Escaneando mercado...")
-        for symbol in SYMBOL_LIST:
-            current = obter_dados(exchange, symbol)
-            if current is None: continue
-
+            # Lógica V55
             signal = None
-            if current['adx'] < 30:
-                if current['rsi'] < 28 and current['close'] < current['lower']:
+            if data['adx'] < 30:
+                if data['rsi'] < 28 and data['close'] < data['lower']:
                     signal = 'buy'
-                elif current['rsi'] > 72 and current['close'] > current['upper']:
+                elif data['rsi'] > 72 and data['close'] > data['upper']:
                     signal = 'sell'
 
             if signal:
-                print(f"✅ SINAL {signal.upper()} em {symbol}")
+                # Setup do Trade Simulado
                 multiplicador = MARTINGALE_LEVELS[estado["martingale_idx"]]
-                tamanho_usd = (banca_atual * PERCENTUAL_MAO_BASE) * multiplicador
+                valor_entrada = (estado["banca_atual"] * PERCENTUAL_MAO_BASE) * multiplicador
                 
-                if tamanho_usd > banca_atual * 0.95: tamanho_usd = banca_atual * 0.95
-                if tamanho_usd < 6: tamanho_usd = 6 # Garante minimo da Binance
-
-                price = current['close']
-                amount = (tamanho_usd * ALAVANCAGEM) / price
+                # Travas de tamanho
+                if valor_entrada > estado["banca_atual"] * 0.95: 
+                    valor_entrada = estado["banca_atual"] * 0.95
                 
-                try:
-                    exchange.set_leverage(ALAVANCAGEM, symbol)
-                    order = exchange.create_market_order(symbol, signal, amount)
-                    
-                    entry_price = float(order['average']) if order['average'] else price
-                    if signal == 'buy':
-                        tp = entry_price * (1 + TARGET_TP)
-                        sl = entry_price * (1 - TARGET_SL)
-                        side_exit = 'sell'
-                    else:
-                        tp = entry_price * (1 - TARGET_TP)
-                        sl = entry_price * (1 + TARGET_SL)
-                        side_exit = 'buy'
-                    
-                    exchange.create_order(symbol, 'STOP_MARKET', amount, params={'stopPrice': sl, 'reduceOnly': True})
-                    exchange.create_order(symbol, 'TAKE_PROFIT_MARKET', amount, params={'stopPrice': tp, 'reduceOnly': True})
-                    
-                    print(f"🚀 Ordem Executada! {symbol}")
-                    estado["trades_hoje"] += 1
-                    break 
-                except Exception as e:
-                    print(f"❌ Erro na ordem: {e}")
+                price = data['close']
+                
+                # Calcula alvos
+                if signal == 'buy':
+                    tp = price * (1 + TARGET_TP)
+                    sl = price * (1 - TARGET_SL)
+                else:
+                    tp = price * (1 - TARGET_TP)
+                    sl = price * (1 + TARGET_SL)
 
-    except Exception as e:
-        print(f"❌ Erro Geral: {e}")
-        traceback.print_exc()
-    
-    finally:
-        # ISSO GARANTE QUE O ARQUIVO SEJA CRIADO SEMPRE
-        salvar_estado(estado)
+                print(f"🚀 SINAL {signal.upper()} em {symbol}!")
+                print(f"   Entrada: {price:.2f} | TP: {tp:.2f} | SL: {sl:.2f} | Valor: ${valor_entrada:.2f}")
+
+                # Registra a "Ordem"
+                estado["posicao_aberta"] = {
+                    "symbol": symbol,
+                    "tipo": signal,
+                    "entrada": price,
+                    "tp": tp,
+                    "sl": sl,
+                    "valor_investido": valor_entrada,
+                    "data_hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                estado["trades_hoje"] += 1
+                salvar_estado(estado)
+                break # Um trade por vez
+
+    salvar_estado(estado)
 
 if __name__ == "__main__":
-    run_bot()
+    try:
+        run_bot()
+    except Exception as e:
+        print(f"Erro fatal: {e}")
+        traceback.print_exc()
+        
