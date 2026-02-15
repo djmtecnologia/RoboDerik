@@ -2,11 +2,21 @@
     "banca_atual": 60.10357897385871,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 1,
-    "trades_hoje": 2,
+    "trades_hoje": 3,
     "data_hoje": "15/02/2026",
     "pnl_hoje": 0.10357897385871288,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "tipo": "buy",
+        "modo": "SNIPER",
+        "entrada": 2002.409912109375,
+        "tp": 2052.470159912109,
+        "sl": 1972.3737634277343,
+        "valor_investido": 15.02589474346468,
+        "criterio": "ADX 37.3 (Trend) | RSI 22.1 < 28",
+        "data_hora": "15/02/2026 11:00:20"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
