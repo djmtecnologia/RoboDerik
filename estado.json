@@ -1,22 +1,22 @@
 {
-    "banca_atual": 60.0,
-    "pico_banca": 60.0,
+    "banca_atual": 60.07659251105328,
+    "pico_banca": 60.07659251105328,
     "martingale_idx": 0,
     "trades_hoje": 0,
     "data_hoje": "15/02/2026",
-    "pnl_hoje": 0.0,
+    "pnl_hoje": 0.07659251105327945,
     "em_quarentena": false,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "tipo": "buy",
-        "modo": "GRID",
-        "entrada": 69581.296875,
-        "tp": 70277.10984375,
-        "sl": 69024.6465,
-        "valor_investido": 2.4,
-        "data_hora": "14/02/2026 22:25:15"
-    },
-    "historico_trades": [],
+    "posicao_aberta": null,
+    "historico_trades": [
+        {
+            "data": "15/02/2026 01:10:27",
+            "symbol": "BTC-USD",
+            "modo": "GRID",
+            "resultado": "\u2705 TAKE PROFIT",
+            "lucro": 0.08,
+            "saldo_final": 60.08
+        }
+    ],
     "banca_inicial": 60.0,
     "ultima_banca": 60.0
 }
