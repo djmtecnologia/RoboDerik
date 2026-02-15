@@ -1,22 +1,12 @@
 {
-    "banca_atual": 60.10357897385871,
+    "banca_atual": 59.350021798186575,
     "pico_banca": 60.16559364929601,
-    "martingale_idx": 1,
+    "martingale_idx": 2,
     "trades_hoje": 3,
     "data_hoje": "15/02/2026",
-    "pnl_hoje": 0.10357897385871288,
+    "pnl_hoje": -0.6499782018134246,
     "em_quarentena": false,
-    "posicao_aberta": {
-        "symbol": "ETH-USD",
-        "tipo": "buy",
-        "modo": "SNIPER",
-        "entrada": 2002.409912109375,
-        "tp": 2052.470159912109,
-        "sl": 1972.3737634277343,
-        "valor_investido": 15.02589474346468,
-        "criterio": "ADX 37.3 (Trend) | RSI 22.1 < 28",
-        "data_hora": "15/02/2026 11:00:20"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
@@ -53,6 +43,20 @@
             "resultado": "\ud83d\udd3b STOP LOSS",
             "lucro_usd": -0.06,
             "saldo_pos_trade": 60.1
+        },
+        {
+            "data": "15/02/2026 14:49:54",
+            "symbol": "ETH-USD",
+            "modo": "SNIPER",
+            "tipo": "BUY",
+            "entrada": 2002.409912109375,
+            "saida": 1968.9359130859375,
+            "tp": 2052.470159912109,
+            "sl": 1972.3737634277343,
+            "criterio": "ADX 37.3 (Trend) | RSI 22.1 < 28",
+            "resultado": "\ud83d\udd3b STOP LOSS",
+            "lucro_usd": -0.75,
+            "saldo_pos_trade": 59.35
         }
     ],
     "banca_inicial": 60.0,
