@@ -2,11 +2,24 @@
     "banca_atual": 57.85804495831787,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 3,
-    "trades_hoje": 4,
+    "trades_hoje": 5,
     "data_hoje": "15/02/2026",
     "pnl_hoje": -2.141955041682132,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "tipo": "buy",
+        "modo": "SNIPER",
+        "entrada": 85.61427307128906,
+        "tp": 87.75462989807129,
+        "sl": 84.33005897521973,
+        "valor_investido": 54.96514271040197,
+        "nivel_mg": 3,
+        "fator_mg": 10.5,
+        "perc_banca": 95.0,
+        "criterio": "ADX 36.4 | RSI 26.9 < 28",
+        "data_hora": "15/02/2026 16:12:54"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
