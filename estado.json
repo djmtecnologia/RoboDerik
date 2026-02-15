@@ -16,6 +16,7 @@
         "valor_investido": 2.4,
         "data_hora": "14/02/2026 22:25:15"
     },
+    "historico_trades": [],
     "banca_inicial": 60.0,
     "ultima_banca": 60.0
 }
