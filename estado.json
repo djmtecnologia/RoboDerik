@@ -2,11 +2,21 @@
     "banca_atual": 59.350021798186575,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 2,
-    "trades_hoje": 3,
+    "trades_hoje": 4,
     "data_hoje": "15/02/2026",
     "pnl_hoje": -0.6499782018134246,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "XRP-USD",
+        "tipo": "buy",
+        "modo": "SNIPER",
+        "entrada": 1.4889503717422485,
+        "tp": 1.5261741310358046,
+        "sl": 1.4666161161661149,
+        "valor_investido": 32.642511989002614,
+        "criterio": "ADX 36.6 (Trend) | RSI 27.3 < 28",
+        "data_hora": "15/02/2026 14:51:55"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
