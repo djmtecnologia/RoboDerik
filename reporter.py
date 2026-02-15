@@ -63,6 +63,7 @@ def gerar_relatorio():
         registro_inicial = novo_registro.copy()
         registro_inicial["Data"] = "Inicio"
         registro_inicial["Banca Total ($)"] = data.get("banca_inicial", 60.0)
+        registro_inicial["Investido ($)"] = 0.0
         registro_inicial["PnL Hoje ($)"] = 0.0
         registro_inicial["Modo"] = "INICIO"
         
