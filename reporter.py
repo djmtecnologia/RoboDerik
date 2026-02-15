@@ -4,68 +4,54 @@ import os
 import sys
 import subprocess
 import pytz
-from datetime import datetime
 
-# --- AUTO-INSTALAÇÃO ---
 def install(package):
     try: __import__(package)
     except: subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
-
 for lib in ["pandas", "openpyxl", "xlsxwriter", "pytz"]: install(lib)
 
-# --- CONFIGURAÇÕES ---
 JSON_FILE = "estado.json"
-EXCEL_FILE = "Relatorio_Oficial.xlsx" # NOME FINAL DO ARQUIVO
-FUSO_BR = pytz.timezone('America/Sao_Paulo')
+EXCEL_FILE = "Relatorio_Oficial.xlsx"
 
 def gerar_relatorio():
-    print("🔄 Gerando relatório...")
+    print("🔄 Gerando relatório V80...")
     
     if not os.path.exists(JSON_FILE):
         print(f"❌ Arquivo {JSON_FILE} não encontrado.")
         return
 
-    with open(JSON_FILE, 'r') as f:
-        data = json.load(f)
+    with open(JSON_FILE, 'r') as f: data = json.load(f)
 
-    # 1. LER DADOS DO HISTÓRICO (JSON)
     raw_trades = data.get("historico_trades", [])
-    
-    if not raw_trades:
-        print("⚠️ Nenhum trade fechado para relatar.")
-        return
-
-    # 2. NORMALIZAR DADOS (Converter legado para novo)
     trades_processados = []
-    
-    # Adiciona saldo inicial (Linha 0 para o gráfico ficar bonito)
-    banca_inicial = data.get("banca_inicial", 60.0)
+
+    # Saldo Inicial
     trades_processados.append({
-        "Data": "Inicio",
-        "Par": "-", "Modo": "Depósito", "Tipo": "-",
-        "Entrada": 0, "Saida": 0, "TP": 0, "SL": 0,
-        "Criterio": "-", "Resultado": "-",
-        "Lucro ($)": 0.0,
-        "Saldo Acumulado": banca_inicial
+        "Data": "Inicio", "Par": "-", "Modo": "Depósito", "Tipo": "-",
+        "Nível": "-", "Fator": "-", "% Banca": "-", # <--- Colunas Novas
+        "Investido ($)": 0, "Entrada": 0, "Saida": 0, "TP": 0, "SL": 0,
+        "Criterio": "-", "Resultado": "-", "Lucro ($)": 0.0,
+        "Saldo Acumulado": data.get("banca_inicial", 60.0)
     })
 
     for t in raw_trades:
-        # Lógica inteligente para pegar chaves novas OU antigas
         lucro_real = t.get("lucro_usd") if "lucro_usd" in t else t.get("lucro", 0.0)
+        saldo_real = t.get("saldo_pos_trade") if "saldo_pos_trade" in t else t.get("saldo_final", 0.0)
         
-        # Se tiver 'saldo_pos_trade', usa. Se não, calcula somando.
-        if "saldo_pos_trade" in t:
-            saldo_real = t.get("saldo_pos_trade")
-        elif "saldo_final" in t:
-            saldo_real = t.get("saldo_final")
-        else:
-            saldo_real = 0.0 # Fallback
-
+        # Recupera dados novos
+        nivel_mg = t.get("nivel_mg", 0)
+        fator_mg = t.get("fator_mg", 1.0) # <--- RECUPERA FATOR
+        perc_banca = t.get("perc_banca", 0.0)
+        
         item = {
             "Data": t.get("data"),
             "Par": t.get("symbol"),
             "Modo": t.get("modo"),
             "Tipo": t.get("tipo", "N/A").upper(),
+            "Nível": nivel_mg,                # Coluna Nova
+            "Fator": f"{fator_mg}x",          # Coluna Nova (ex: 1.5x)
+            "% Banca": f"{perc_banca}%",      # Coluna Nova
+            "Investido ($)": t.get("investido", 0.0),
             "Entrada": t.get("entrada", 0.0),
             "Saida": t.get("saida", 0.0),
             "TP": t.get("tp", 0.0),
@@ -78,53 +64,45 @@ def gerar_relatorio():
         trades_processados.append(item)
 
     df = pd.DataFrame(trades_processados)
-
-    # 3. GERAR EXCEL
+    
+    # GERAR EXCEL
     writer = pd.ExcelWriter(EXCEL_FILE, engine='xlsxwriter')
     df.to_excel(writer, sheet_name='Relatorio_Trades', index=False)
-
+    
     workbook = writer.book
     worksheet = writer.sheets['Relatorio_Trades']
-
-    # 4. FORMATAÇÃO VISUAL
+    
+    # FORMATAÇÃO
     fmt_money = workbook.add_format({'num_format': '$ #,##0.00'})
-    fmt_num = workbook.add_format({'num_format': '#,##0.00'})
     fmt_center = workbook.add_format({'align': 'center'})
-    fmt_header = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'border': 1})
-
-    # Larguras
+    
+    # Ajuste de Larguras
     worksheet.set_column('A:A', 20, fmt_center) # Data
     worksheet.set_column('B:D', 10, fmt_center) # Par/Modo/Tipo
-    worksheet.set_column('E:H', 14, fmt_num)    # Preços
-    worksheet.set_column('I:I', 35)             # Criterio (Largo)
-    worksheet.set_column('J:J', 15, fmt_center) # Resultado
-    worksheet.set_column('K:L', 18, fmt_money)  # Lucro e Saldo
+    worksheet.set_column('E:G', 8, fmt_center)  # Nivel, Fator, % (Estreitos)
+    worksheet.set_column('H:H', 14, fmt_money)  # Investido
+    worksheet.set_column('I:L', 14, fmt_center) # Preços
+    worksheet.set_column('M:M', 35)             # Criterio
+    worksheet.set_column('N:O', 16, fmt_money)  # Lucro e Saldo
 
-    # Cores no Lucro (Verde/Vermelho)
+    # Cores no Lucro
     green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
     red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-    worksheet.conditional_format('K2:K1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': green})
-    worksheet.conditional_format('K2:K1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': red})
+    worksheet.conditional_format('N2:N1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': green})
+    worksheet.conditional_format('N2:N1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': red})
 
-    # 5. GRÁFICO DE EVOLUÇÃO
+    # GRÁFICO
     chart = workbook.add_chart({'type': 'line'})
     chart.add_series({
-        'name':       'Evolução da Banca',
-        'categories': ['Relatorio_Trades', 1, 0, len(df), 0], # Coluna A (Data)
-        'values':     ['Relatorio_Trades', 1, 11, len(df), 11], # Coluna L (Saldo)
-        'line':       {'color': '#2980B9', 'width': 2.5},
-        'marker':     {'type': 'circle', 'size': 6}
+        'name': 'Evolução da Banca',
+        'categories': ['Relatorio_Trades', 1, 0, len(df), 0],
+        'values':     ['Relatorio_Trades', 1, 15, len(df), 15], # Coluna P (Saldo)
+        'line':       {'color': '#2980B9', 'width': 2.5}
     })
-    chart.set_title({'name': 'Performance: Trades Realizados'})
-    chart.set_y_axis({'name': 'Saldo ($)'})
-    chart.set_size({'width': 800, 'height': 400})
+    worksheet.insert_chart('Q2', chart)
     
-    # Posiciona o gráfico ao lado da tabela (Coluna N)
-    worksheet.insert_chart('N2', chart)
-
     writer.close()
-    print(f"✅ SUCESSO! Relatório gerado: {EXCEL_FILE}")
-    print(f"📊 Total de Trades Processados: {len(df)-1}")
+    print(f"✅ Relatório V80 Gerado: {EXCEL_FILE}")
 
 if __name__ == "__main__":
     gerar_relatorio()
