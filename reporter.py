@@ -4,41 +4,24 @@ import os
 from datetime import datetime
 import sys
 import subprocess
-
-# --- AUTO-INSTALAÇÃO DAS LIBS DE RELATÓRIO ---
-def install(package):
-    try:
-        __import__(package)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
-
-# Adicionei 'pytz' na lista para garantir o fuso horário
-for lib in ["pandas", "openpyxl", "xlsxwriter", "pytz"]:
-    install(lib)
-
-import pytz # Importação do fuso
+import pytz
 
 # --- CONFIGURAÇÕES ---
 JSON_FILE = "estado.json"
-CSV_FILE = "historico_trades.csv"
-EXCEL_FILE = "Relatorio_RoboDerik_V70.xlsx"
-
-# --- CONFIGURAÇÃO DE FUSO HORÁRIO (BR) ---
+CSV_FILE = "historico_trades.csv" # Mantemos para o gráfico de evolução
+EXCEL_FILE = "Relatorio_RoboDerik_V74.xlsx"
 FUSO_BR = pytz.timezone('America/Sao_Paulo')
 
 def gerar_relatorio():
-    # 1. Ler o Estado Atual
     if not os.path.exists(JSON_FILE):
-        print(f"❌ Arquivo {JSON_FILE} não encontrado. Rode o bot primeiro.")
+        print(f"❌ Arquivo {JSON_FILE} não encontrado.")
         return
 
     with open(JSON_FILE, 'r') as f:
         data = json.load(f)
 
-    # 2. Preparar os Dados para o Histórico
+    # --- 1. ATUALIZAR TIMELINE (GRÁFICO DE EVOLUÇÃO) ---
     investido = data.get("posicao_aberta", {}).get("valor_investido", 0) if data.get("posicao_aberta") else 0
-    
-    # AQUI ESTÁ A CORREÇÃO: Usamos o Fuso BR explicitamente
     data_hora_br = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
     
     novo_registro = {
@@ -51,75 +34,72 @@ def gerar_relatorio():
         "Modo": data.get("posicao_aberta", {}).get("modo", "AGUARDANDO") if data.get("posicao_aberta") else "LIQUIDO"
     }
 
-    # 3. Atualizar o CSV (Banco de Dados)
     if os.path.exists(CSV_FILE):
-        df = pd.read_csv(CSV_FILE)
-        # Evita duplicatas exatas no mesmo minuto
-        ultima_data = df.iloc[-1]["Data"] if not df.empty else ""
+        df_timeline = pd.read_csv(CSV_FILE)
+        ultima_data = df_timeline.iloc[-1]["Data"] if not df_timeline.empty else ""
+        # Só adiciona se passou pelo menos 1 minuto para evitar spam
         if ultima_data != novo_registro["Data"]:
-            df = pd.concat([df, pd.DataFrame([novo_registro])], ignore_index=True)
+            df_timeline = pd.concat([df_timeline, pd.DataFrame([novo_registro])], ignore_index=True)
     else:
-        # Se é a primeira vez, cria o arquivo com saldo inicial
         registro_inicial = novo_registro.copy()
         registro_inicial["Data"] = "Inicio"
         registro_inicial["Banca Total ($)"] = data.get("banca_inicial", 60.0)
         registro_inicial["Investido ($)"] = 0.0
         registro_inicial["PnL Hoje ($)"] = 0.0
         registro_inicial["Modo"] = "INICIO"
-        
-        df = pd.DataFrame([registro_inicial, novo_registro])
+        df_timeline = pd.DataFrame([registro_inicial, novo_registro])
 
-    df.to_csv(CSV_FILE, index=False)
-    print(f"✅ Histórico atualizado em {CSV_FILE} (Horário SP)")
+    df_timeline.to_csv(CSV_FILE, index=False)
 
-    # 4. Gerar o Excel com Gráficos
+    # --- 2. GERAR TABELA DE TRADES REAIS (EXTRATO) ---
+    lista_trades = data.get("historico_trades", [])
+    df_extrato = pd.DataFrame(lista_trades) if lista_trades else pd.DataFrame(columns=["Sem trades ainda"])
+
+    # --- 3. GERAR EXCEL COM DUAS ABAS ---
     writer = pd.ExcelWriter(EXCEL_FILE, engine='xlsxwriter')
-    df.to_excel(writer, sheet_name='Performance', index=False)
+    
+    # Aba 1: Evolução (Gráfico)
+    df_timeline.to_excel(writer, sheet_name='Evolucao_Banca', index=False)
+    
+    # Aba 2: Extrato (Lista de Trades Únicos)
+    df_extrato.to_excel(writer, sheet_name='Extrato_Trades', index=False)
 
     workbook = writer.book
-    worksheet = writer.sheets['Performance']
+    
+    # --- FORMATAÇÃO ABA EVOLUÇÃO ---
+    ws_evolucao = writer.sheets['Evolucao_Banca']
+    formato_money = workbook.add_format({'num_format': '$ #,##0.00'})
+    ws_evolucao.set_column('B:E', 15, formato_money)
+    ws_evolucao.set_column('A:A', 22)
 
-    # Formatação Bonita
-    formato_dinheiro = workbook.add_format({'num_format': '$ #,##0.00'})
-    formato_verde = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
-    formato_vermelho = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-
-    worksheet.set_column('B:E', 15, formato_dinheiro)
-    worksheet.set_column('A:A', 22) # Aumentei um pouco a largura da data
-
-    # Regras de Cor PnL
-    worksheet.conditional_format('E2:E1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': formato_verde})
-    worksheet.conditional_format('E2:E1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': formato_vermelho})
-
-    # --- GRÁFICO 1: EVOLUÇÃO ---
-    chart_banca = workbook.add_chart({'type': 'line'})
-    chart_banca.add_series({
-        'name':       'Evolução da Banca',
-        'categories': ['Performance', 1, 0, len(df), 0],
-        'values':     ['Performance', 1, 1, len(df), 1],
-        'line':       {'color': 'blue', 'width': 2.5},
-        'marker':     {'type': 'circle', 'size': 5}
+    # Gráfico de Linha
+    chart = workbook.add_chart({'type': 'line'})
+    chart.add_series({
+        'name': 'Banca',
+        'categories': ['Evolucao_Banca', 1, 0, len(df_timeline), 0],
+        'values':     ['Evolucao_Banca', 1, 1, len(df_timeline), 1],
+        'line':       {'color': 'blue', 'width': 2}
     })
-    chart_banca.set_title({'name': 'Crescimento do Patrimônio'})
-    chart_banca.set_y_axis({'name': 'Valor em USD'})
-    chart_banca.set_style(10)
-    worksheet.insert_chart('H2', chart_banca)
+    ws_evolucao.insert_chart('H2', chart)
 
-    # --- GRÁFICO 2: LUCRO DIÁRIO ---
-    chart_pnl = workbook.add_chart({'type': 'column'})
-    chart_pnl.add_series({
-        'name':       'Lucro/Prejuízo Diário',
-        'categories': ['Performance', 1, 0, len(df), 0],
-        'values':     ['Performance', 1, 4, len(df), 4],
-        'fill':       {'color': '#50C878'},
-        'border':     {'color': 'black'}
-    })
-    chart_pnl.set_title({'name': 'Performance Diária'})
-    chart_pnl.set_y_axis({'name': 'Lucro em USD'})
-    worksheet.insert_chart('H18', chart_pnl)
+    # --- FORMATAÇÃO ABA EXTRATO ---
+    ws_extrato = writer.sheets['Extrato_Trades']
+    ws_extrato.set_column('A:Z', 18) # Ajusta largura
+    
+    # Formatação Condicional (Verde/Vermelho) no Lucro
+    if not df_extrato.empty and "lucro_usd" in df_extrato.columns:
+        col_idx = df_extrato.columns.get_loc("lucro_usd")
+        letra_col = chr(65 + col_idx) # Converte índice 0->A, 1->B...
+        formato_verde = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+        formato_vermelho = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+        
+        ws_extrato.conditional_format(f'{letra_col}2:{letra_col}1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': formato_verde})
+        ws_extrato.conditional_format(f'{letra_col}2:{letra_col}1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': formato_vermelho})
 
     writer.close()
-    print(f"📊 Relatório Gráfico gerado: {EXCEL_FILE}")
+    print(f"📊 Relatório V74 Gerado: {EXCEL_FILE}")
+    print("👉 Aba 1: Gráfico de Crescimento")
+    print("👉 Aba 2: Lista Real de Trades (Sem duplicatas)")
 
 if __name__ == "__main__":
     gerar_relatorio()
