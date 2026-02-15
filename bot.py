@@ -34,7 +34,7 @@ def obter_data_hoje_br():
     """Retorna apenas a data atual em SP no formato DD/MM/YYYY"""
     return datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
-# --- CONFIGURAÇÕES V71 (SIMULAÇÃO HÍBRIDA) ---
+# --- CONFIGURAÇÕES V73 (SIMULAÇÃO HÍBRIDA + AUDITORIA) ---
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
     "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
@@ -62,7 +62,7 @@ MAX_TRADES_DIA = 12
 STATE_FILE = "estado.json"
 
 def carregar_estado():
-    # Estado padrão com datas BR
+    # Estado padrão com datas BR e Histórico
     padrao = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
@@ -71,12 +71,17 @@ def carregar_estado():
         "data_hoje": obter_data_hoje_br(), # Data BR
         "pnl_hoje": 0.0,
         "em_quarentena": False,
-        "posicao_aberta": None
+        "posicao_aberta": None,
+        "historico_trades": [] # <--- CAMPO NOVO PARA AUDITORIA
     }
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
-                padrao.update(json.load(f))
+                carregado = json.load(f)
+                padrao.update(carregado)
+                # Garante compatibilidade se o arquivo json for antigo
+                if "historico_trades" not in padrao:
+                    padrao["historico_trades"] = []
         except: pass
     return padrao
 
@@ -119,11 +124,12 @@ def obter_dados_yfinance(symbol):
 
 def run_bot():
     hora_atual = obter_data_hora_br()
-    print(f"🚀 ROBODERIK V71 (SIMULAÇÃO HÍBRIDA) - {hora_atual} (BR)")
+    print(f"🚀 ROBODERIK V73 (SIMULAÇÃO HÍBRIDA + AUDITORIA) - {hora_atual} (BR)")
     
     estado = carregar_estado()
     
-    print(f"💰 Banca Virtual: ${estado['banca_atual']:.2f} | Hoje: {estado['trades_hoje']} trades")
+    trades_totais = len(estado.get("historico_trades", []))
+    print(f"💰 Banca Virtual: ${estado['banca_atual']:.2f} | Histórico: {trades_totais} trades")
 
     # Verifica virada de dia (Fuso Brasil)
     hoje_br = obter_data_hoje_br()
@@ -162,6 +168,22 @@ def run_bot():
             if fechou:
                 estado["banca_atual"] += lucro
                 estado["pnl_hoje"] += lucro
+                
+                # --- REGISTRO DE AUDITORIA ---
+                novo_trade = {
+                    "data": obter_data_hora_br(),
+                    "symbol": symbol,
+                    "modo": pos['modo'],
+                    "resultado": motivo,
+                    "lucro": round(lucro, 2),
+                    "saldo_final": round(estado["banca_atual"], 2)
+                }
+                estado["historico_trades"].append(novo_trade)
+                # Mantém histórico limpo (últimos 100)
+                if len(estado["historico_trades"]) > 100:
+                    estado["historico_trades"].pop(0)
+                # -----------------------------
+
                 estado["posicao_aberta"] = None
                 print(f"{motivo} | PnL: ${lucro:.2f} | Banca: ${estado['banca_atual']:.2f}")
                 
@@ -253,13 +275,14 @@ def run_bot():
                     "tp": tp, 
                     "sl": sl, 
                     "valor_investido": valor,
-                    "data_hora": obter_data_hora_br() # <--- AQUI A MÁGICA
+                    "data_hora": obter_data_hora_br() 
                 }
                 estado["trades_hoje"] += 1
                 salvar_estado(estado)
                 print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | Data: {obter_data_hora_br()}")
                 break
             else:
+                # Log Transparente
                 status = "GRID" if adx < 25 else ("SNIPER" if adx < 40 else "PERIGO")
                 print(f"   ⚪ {symbol:<9} | {status:<6} | ADX {adx:.1f} | RSI {rsi:.1f}")
 
@@ -271,4 +294,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Erro Fatal: {e}")
         traceback.print_exc()
-        
+            
