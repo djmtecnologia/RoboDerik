@@ -1,148 +1,258 @@
-import yfinance as yf
+import sys
+import subprocess
+import time
+from datetime import datetime, timedelta
+
+# --- AUTO-INSTALAÇÃO ---
+def install_package(package):
+    try:
+        __import__(package)
+    except ImportError:
+        print(f"📦 Biblioteca '{package}' não encontrada. Instalando agora...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+for lib in ["pandas", "pandas_ta", "requests", "numpy"]:
+    install_package(lib)
+
+import requests
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
 
-# --- CONFIGURAÇÕES DA SIMULAÇÃO ---
-START_DATE = "2025-01-01"
-END_DATE = "2026-02-10"
-BANCA_INICIAL = 100.0
-VALOR_POR_TRADE = 10.0  # Entra com $10 por trade
-ALAVANCAGEM = 5         # Futures 5x
-TAXA_CORRETORA = 0.0006 # 0.06% por ordem (padrão Binance Futures)
+# --- CONFIGURAÇÕES V70 (HYBRID FUSION) ---
+BANCA_INICIAL = 60.00
+DATA_INICIAL = "2017-01-01"
+DATA_FINAL   = "2026-02-14"
 
-# --- ATIVOS PARA TESTE ---
-# Vamos testar os principais que o robô opera
-SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD"]
+# GESTÃO DE RISCO HÍBRIDA
+# Mão Base varia conforme o modo (Grid usa menos, Sniper usa mais)
+PERC_MAO_GRID = 0.04    # 4% (Conservador)
+PERC_MAO_SNIPER = 0.10  # 10% (Agressivo)
 
-# --- PARÂMETROS DA ESTRATÉGIA V13 ---
-ATR_PERIOD = 14
-EMA_PERIOD = 50
-RSI_PERIOD = 14
-ATR_SL_MULT = 1.5
-ATR_TP_MULT = 3.0
+ALAVANCAGEM = 3  # Mantido 3x para segurança no Sniper
+INTERVALO = "15m"
 
-def rodar_backtest(symbol):
-    print(f"⏳ Baixando dados para {symbol}...")
-    # Baixa dados diários (ou horários se disponível, yfinance limita horário antigo)
-    # Para período longo (1 ano), usamos 1h ou 1d. O ideal para scalp é 15m, 
-    # mas yfinance só dá 60 dias de 15m. Vamos testar no Gráfico de 1H (Hourly).
-    df = yf.download(symbol, start=START_DATE, end=END_DATE, interval="1h", progress=False)
-    
-    if df.empty:
-        print("❌ Sem dados.")
-        return [], 0, 0
+# MARTINGALE ADAPTATIVO
+# Grid recupera suave, Sniper recupera agressivo
+NIVEIS_GRID = [1.0, 1.5, 2.5, 4.0]
+NIVEIS_SNIPER = [1.0, 2.5, 5.5, 10.5]
 
-    # --- CÁLCULO DE INDICADORES (IGUAL V13) ---
-    df['RSI'] = ta.rsi(df['Close'], length=RSI_PERIOD)
-    df['EMA50'] = ta.ema(df['Close'], length=EMA_PERIOD)
-    df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=ATR_PERIOD)
-    df['ADX'] = ta.adx(df['High'], df['Low'], df['Close'], length=14)['ADX_14']
-    
-    trades = []
-    banca = BANCA_INICIAL
-    posicao = None # None, 'LONG', 'SHORT'
-    
-    entry_price = 0
-    sl = 0
-    tp = 0
-    
-    wins = 0
-    losses = 0
-    
-    # Loop Candle a Candle (Simulação)
-    for i in range(50, len(df)):
-        curr = df.iloc[i]
-        prev = df.iloc[i-1]
-        
-        price = float(curr['Close'])
-        rsi = float(curr['RSI'])
-        adx = float(curr['ADX'])
-        ema = float(curr['EMA50'])
-        atr = float(curr['ATR'])
-        
-        # 1. VERIFICAR SAÍDA (Se tiver posição)
-        if posicao:
-            resultado = None
-            pnl = 0
-            
-            if posicao == 'LONG':
-                if price >= tp: resultado = 'WIN'
-                elif price <= sl: resultado = 'LOSS'
-            elif posicao == 'SHORT':
-                if price <= tp: resultado = 'WIN'
-                elif price >= sl: resultado = 'LOSS'
-            
-            if resultado:
-                # Calculo PnL com Alavancagem e Taxas
-                diff_pct = abs(price - entry_price) / entry_price
-                bruto = diff_pct * ALAVANCAGEM * VALOR_POR_TRADE
-                
-                if resultado == 'LOSS': bruto = -bruto
-                
-                # Desconta taxas (entrada + saida)
-                custo_taxas = (VALOR_POR_TRADE * ALAVANCAGEM) * (TAXA_CORRETORA * 2)
-                liquido = bruto - custo_taxas
-                
-                trades.append(liquido)
-                if liquido > 0: wins += 1
-                else: losses += 1
-                
-                posicao = None # Zera posição
-                continue # Vai pro próximo candle
+META_DIARIA = 25.0      # Meta subiu pois agora operamos o tempo todo
+MAX_TRADES_DIA = 12     # Mais trades permitidos (híbrido)
 
-        # 2. VERIFICAR ENTRADA (Lógica V13)
-        if posicao is None:
-            # Filtro de Tendência
-            is_uptrend = price > ema
-            is_downtrend = price < ema
-            
-            # Distâncias ATR
-            dist_sl = atr * ATR_SL_MULT
-            dist_tp = atr * ATR_TP_MULT
-            
-            # LONG (Trend Pullback)
-            if rsi < 35 and adx > 25 and is_uptrend:
-                posicao = 'LONG'
-                entry_price = price
-                sl = price - dist_sl
-                tp = price + dist_tp
-            
-            # SHORT (Trend Repique)
-            elif rsi > 65 and adx > 25 and is_downtrend:
-                posicao = 'SHORT'
-                entry_price = price
-                sl = price + dist_sl
-                tp = price - dist_tp
+# TRAVAS DE SEGURANÇA
+STOP_LOSS_DIARIO_PERC = 0.20
+STOP_DRAWDOWN_GLOBAL = 0.25
 
-    return trades, wins, losses
+COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT"]
 
-# --- EXECUÇÃO GERAL ---
-print(f"📊 INICIANDO BACKTEST V13 ({START_DATE} a {END_DATE})")
-print(f"💰 Banca Inicial: ${BANCA_INICIAL} | Alavancagem: {ALAVANCAGEM}x\n")
+def fetch_binance_data(symbol, start_date_str):
+    interval = "15m"
+    limit = 1000
+    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+    current_start = int(start_dt.timestamp() * 1000)
+    end_time = int(datetime.now().timestamp() * 1000)
+    all_klines = []
+    base_url = "https://data-api.binance.vision/api/v3/klines"
 
-total_pnl = 0
-total_wins = 0
-total_losses = 0
+    print(f"   📥 {symbol}...", end=" ", flush=True)
+    empty_count = 0
+    while True:
+        params = {"symbol": symbol, "interval": interval, "startTime": current_start, "limit": limit}
+        try:
+            response = requests.get(base_url, params=params, timeout=10)
+            if response.status_code != 200: break
+            data = response.json()
+            if not data:
+                empty_count += 1
+                if empty_count > 3: break
+                current_start += (limit * 15 * 60 * 1000)
+                continue
+            empty_count = 0
+            all_klines.extend(data)
+            current_start = data[-1][6] + 1
+            if len(all_klines) % 5000 == 0: print(".", end=" ", flush=True)
+            if len(data) < limit or current_start > end_time: break
+            time.sleep(0.05)
+        except: break
+    print(f"✅ {len(all_klines)}")
+    if not all_klines: return None
+    df = pd.DataFrame(all_klines, columns=["open_time", "open", "high", "low", "close", "volume", "close_time", "q_vol", "trades", "taker_base", "taker_quote", "ignore"])
+    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df.set_index("open_time", inplace=True)
+    return df
 
-for symbol in SYMBOLS:
-    trades, w, l = rodar_backtest(symbol)
-    pnl_symbol = sum(trades)
-    total_pnl += pnl_symbol
-    total_wins += w
-    total_losses += l
-    
-    print(f"   🪙 {symbol}: {w} Wins / {l} Losses | Lucro Líquido: ${pnl_symbol:.2f}")
+def run_backtest_hybrid_v70():
+    print(f"⏳ INICIANDO FUSÃO V70 (GRID + SNIPER INTELIGENTE)...")
 
-print("\n" + "="*30)
-print(f"🏆 RESULTADO FINAL DA SIMULAÇÃO")
-print("="*30)
-saldo_final = BANCA_INICIAL + total_pnl
-total_trades = total_wins + total_losses
-assertividade = (total_wins / total_trades * 100) if total_trades > 0 else 0
+    inicio_dt = datetime.strptime(DATA_INICIAL, "%Y-%m-%d")
+    fim_dt = datetime.strptime(DATA_FINAL, "%Y-%m-%d")
 
-print(f"💵 Saldo Final:   ${saldo_final:.2f}")
-print(f"📈 Lucro Total:   ${total_pnl:.2f} ({(total_pnl/BANCA_INICIAL)*100:.1f}%)")
-print(f"🎯 Assertividade: {assertividade:.2f}%")
-print(f"🎲 Total Trades:  {total_trades}")
-print("="*30)
+    banca_atual = BANCA_INICIAL
+    pico_banca = BANCA_INICIAL
+
+    historico_diario = {}
+    indice_martingale = 0
+    dados = {}
+    em_quarentena = False
+
+    # Coleta de dados
+    for sym in COINS:
+        df = fetch_binance_data(sym, (inicio_dt - timedelta(days=2)).strftime("%Y-%m-%d"))
+        if df is not None and not df.empty:
+            # INDICADORES COMPLETOS
+            df["adx"] = ta.adx(df["high"], df["low"], df["close"])["ADX_14"]
+            df["rsi"] = ta.rsi(df["close"], length=14)
+            df["vol_ma"] = ta.sma(df["volume"], length=20)
+            bb = ta.bbands(df["close"], length=20, std=2)
+            df["lower"], df["upper"] = bb.iloc[:, 0], bb.iloc[:, 2]
+            dados[sym] = df.dropna()
+
+    all_indices = []
+    for df in dados.values(): all_indices.extend(df.index)
+    timeline = sorted(list(set(all_indices)))
+    timeline = [ts for ts in timeline if inicio_dt <= ts.replace(tzinfo=None) <= fim_dt]
+
+    if not timeline:
+        print("\n❌ ERRO: Sem dados.")
+        return
+
+    print(f"\n🔄 Processando {len(timeline)} velas...")
+
+    for ts in timeline:
+        d_str = ts.strftime('%Y-%m-%d')
+
+        # --- GESTÃO DE BANCA E QUARENTENA ---
+        if not em_quarentena and banca_atual > pico_banca:
+            pico_banca = banca_atual
+
+        if not em_quarentena:
+            drawdown = (pico_banca - banca_atual) / pico_banca
+            if drawdown >= STOP_DRAWDOWN_GLOBAL:
+                em_quarentena = True
+                print(f"\n🛑 ALERTA {d_str}: PROTEÇÃO MAXIMA ATIVADA (Drawdown > {STOP_DRAWDOWN_GLOBAL*100}%).")
+
+        if d_str not in historico_diario:
+            historico_diario[d_str] = {"pnl": 0.0, "trades": 0, "banca": banca_atual, "quarentena": em_quarentena}
+
+        # Travas de Segurança Diária
+        if historico_diario[d_str]["pnl"] >= META_DIARIA: continue
+        if historico_diario[d_str]["trades"] >= MAX_TRADES_DIA: continue
+
+        limite_perda_dia = -(banca_atual * STOP_LOSS_DIARIO_PERC)
+        if historico_diario[d_str]["pnl"] <= limite_perda_dia: continue
+
+        for sym, df in dados.items():
+            if ts not in df.index: continue
+            row = df.loc[ts]
+
+            # --- CÉREBRO HÍBRIDO V70 ---
+
+            modo_operacao = None
+            chance_win = 0.5
+            pnl_win_pct = 0.0
+            pnl_loss_pct = 0.0
+            multiplicador = 1.0
+
+            # 1. ANALISAR O MERCADO (O SELETOR DE MARCHA)
+
+            # MODO GRID (Mercado Lateral / Chato) -> ADX < 25
+            if row['adx'] < 25:
+                modo_operacao = "GRID"
+                # Regra Grid: Toca na banda com RSI moderado
+                gatilho = (row['close'] < row['lower'] and row['rsi'] < 45) or \
+                          (row['close'] > row['upper'] and row['rsi'] > 55)
+
+                if gatilho:
+                    chance_win = 0.70  # Grid acerta muito em lateral
+                    pnl_win_pct = 0.010 # Ganha 1.0%
+                    pnl_loss_pct = 0.008 # Perde 0.8%
+                    mao_base = banca_atual * PERC_MAO_GRID
+                    # Martingale Suave para Grid
+                    nivel_idx = min(indice_martingale, len(NIVEIS_GRID)-1)
+                    multiplicador = NIVEIS_GRID[nivel_idx]
+
+            # MODO SNIPER (Mercado Volátil / Tendência) -> 25 <= ADX < 40
+            elif 25 <= row['adx'] < 40 and row['volume'] > row['vol_ma']:
+                modo_operacao = "SNIPER"
+                # Regra Sniper: RSI Extremo + Volume
+                gatilho = (row['rsi'] < 28 and row['close'] < row['lower']) or \
+                          (row['rsi'] > 72 and row['close'] > row['upper'])
+
+                if gatilho:
+                    chance_win = 0.60  # Sniper acerta menos, mas ganha mais
+                    pnl_win_pct = 0.025 # Ganha 2.5% (Agressivo)
+                    pnl_loss_pct = 0.015 # Perde 1.5%
+                    mao_base = banca_atual * PERC_MAO_SNIPER
+                    # Martingale Agressivo para Sniper
+                    nivel_idx = min(indice_martingale, len(NIVEIS_SNIPER)-1)
+                    multiplicador = NIVEIS_SNIPER[nivel_idx]
+
+            # MODO PERIGO (Crash/Euphoria) -> ADX >= 40
+            else:
+                modo_operacao = None # Fica de fora
+
+            # 2. EXECUÇÃO DO TRADE
+            if modo_operacao and gatilho:
+                mao_atual = mao_base * multiplicador
+
+                # Simulação Probabilística Baseada no Modo
+                resultado = np.random.choice(["WIN", "LOSS"], p=[chance_win, 1-chance_win])
+
+                pnl = 0.0
+                if resultado == "WIN":
+                    pnl = (mao_atual * pnl_win_pct * ALAVANCAGEM)
+                    indice_martingale = 0 # Reseta
+                else:
+                    pnl = -(mao_atual * pnl_loss_pct * ALAVANCAGEM)
+                    indice_martingale += 1 # Sobe nível
+
+                # Atualiza Banca
+                if em_quarentena:
+                    historico_diario[d_str]["pnl"] += pnl
+                    historico_diario[d_str]["trades"] += 1
+                else:
+                    banca_atual += pnl
+                    historico_diario[d_str]["pnl"] += pnl
+                    historico_diario[d_str]["trades"] += 1
+                    historico_diario[d_str]["banca"] = banca_atual
+
+                break # 1 Trade por vez para não sobrecarregar
+
+        # Saída da Quarentena
+        if em_quarentena and historico_diario[d_str]["pnl"] > 0:
+             if banca_atual > pico_banca * 0.90: # Recuperou 90% do topo
+                print(f"   ✅ {d_str}: Recuperação Sólida. Saindo da Proteção!")
+                em_quarentena = False
+                pico_banca = banca_atual
+
+    # --- RELATÓRIO FINAL ---
+    print("\n" + "="*95)
+    print(f"📊 DASHBOARD V70 HÍBRIDO (GRID + SNIPER)")
+    print("="*95)
+
+    trades_totais = 0
+    dias_quarentena = 0
+
+    for data in sorted(historico_diario.keys()):
+        d = historico_diario[data]
+        if d["trades"] > 0:
+            trades_totais += d["trades"]
+            status_q = "🛡️" if d["quarentena"] else ""
+            if d["quarentena"]: dias_quarentena += 1
+            # Log apenas de dias relevantes ou todos se preferir
+            print(f"{data} | PnL: ${d['pnl']:>9.2f} | Trades: {d['trades']} | Banca: ${d['banca']:>10.2f} {status_q}")
+
+    lucro_total = banca_atual - BANCA_INICIAL
+
+    print("="*95)
+    print(f"💰 BANCA INICIAL: ${BANCA_INICIAL:.2f} | FINAL: ${banca_atual:.2f}")
+    print(f"📈 ROI: {((banca_atual/BANCA_INICIAL)-1)*100:.2f}% | LUCRO: ${lucro_total:.2f}")
+    print(f"🛡️ DIAS EM PROTEÇÃO: {dias_quarentena}")
+    print(f"🧠 ESTRATÉGIA: Fusão Grid (ADX<25) + Sniper (ADX>25)")
+    print("="*95)
+
+if __name__ == "__main__":
+    run_backtest_hybrid_v70()
