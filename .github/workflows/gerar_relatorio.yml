@@ -1,7 +1,7 @@
 name: 📊 Gerar Relatório Excel
 
 on:
-  workflow_dispatch: # Permite rodar manualmente clicando num botão
+  workflow_dispatch: # Permite rodar manualmente
 
 permissions:
   contents: write
@@ -22,7 +22,7 @@ jobs:
     - name: Instalar Dependências
       run: |
         python -m pip install --upgrade pip
-        pip install pandas openpyxl xlsxwriter
+        pip install pandas openpyxl xlsxwriter pytz
 
     - name: Executar Reporter
       run: python reporter.py
@@ -31,8 +31,9 @@ jobs:
       run: |
         git config --global user.name 'RoboDerik Reporter'
         git config --global user.email 'robot@derik.com'
-        git add historico_trades.csv Relatorio_RoboDerik_V70.xlsx
+        # AQUI ESTAVA O ERRO: Agora adicionamos o nome correto
+        git add Relatorio_Oficial.xlsx
         # Só commita se houver mudanças
-        git commit -m "📊 Relatório Atualizado: $(date)" || echo "Sem mudanças no relatório"
+        git commit -m "📊 Relatório Oficial Atualizado: $(date)" || echo "Sem mudanças no relatório"
         git push
         
