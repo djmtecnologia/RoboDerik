@@ -11,7 +11,7 @@ def install(package):
     try:
         __import__(package)
     except ImportError:
-        # Instalação silenciosa para não poluir o log do GitHub
+        # Instalação silenciosa
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
 
 for lib in ["yfinance", "pandas", "pandas_ta", "numpy", "pytz"]:
@@ -21,9 +21,20 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-import pytz
+import pytz # Importante para o fuso horário
 
-# --- CONFIGURAÇÕES V71 (HÍBRIDO SIMULADO - GITHUB) ---
+# --- CONFIGURAÇÕES DE FUSO E DATA ---
+FUSO_BR = pytz.timezone('America/Sao_Paulo')
+
+def obter_data_hora_br():
+    """Retorna data e hora atuais em SP no formato DD/MM/YYYY HH:MM:SS"""
+    return datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+
+def obter_data_hoje_br():
+    """Retorna apenas a data atual em SP no formato DD/MM/YYYY"""
+    return datetime.now(FUSO_BR).strftime("%d/%m/%Y")
+
+# --- CONFIGURAÇÕES V71 (SIMULAÇÃO HÍBRIDA) ---
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
     "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
@@ -31,7 +42,7 @@ SYMBOL_MAP = {
 TIMEFRAME = "15m"
 ALAVANCAGEM = 3
 
-# GESTÃO DE RISCO HÍBRIDA (VALIDADA V70)
+# GESTÃO DE RISCO HÍBRIDA
 PERC_MAO_GRID = 0.04    # 4%
 PERC_MAO_SNIPER = 0.10  # 10%
 
@@ -51,16 +62,16 @@ MAX_TRADES_DIA = 12
 STATE_FILE = "estado.json"
 
 def carregar_estado():
-    # Estrutura padrão inicial
+    # Estado padrão com datas BR
     padrao = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
         "martingale_idx": 0,
         "trades_hoje": 0,
-        "data_hoje": datetime.now().strftime("%Y-%m-%d"),
+        "data_hoje": obter_data_hoje_br(), # Data BR
         "pnl_hoje": 0.0,
         "em_quarentena": False,
-        "posicao_aberta": None # Guarda o trade ativo
+        "posicao_aberta": None
     }
     if os.path.exists(STATE_FILE):
         try:
@@ -73,17 +84,15 @@ def salvar_estado(estado):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(estado, f, indent=4)
-        print("💾 Estado salvo.")
+        print(f"💾 [{obter_data_hora_br()}] Estado salvo.")
     except Exception as e:
         print(f"❌ Erro ao salvar: {e}")
 
 def obter_dados_yfinance(symbol):
     try:
-        # Baixa dados recentes (silencioso)
         df = yf.download(symbol, period="5d", interval=TIMEFRAME, progress=False)
         if df.empty: return None
         
-        # Tratamento de Colunas
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         
@@ -92,12 +101,10 @@ def obter_dados_yfinance(symbol):
 
         if len(df) < 30: return None
 
-        # Indicadores V70
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
         df['rsi'] = ta.rsi(df['close'], length=14)
         df['vol_ma'] = ta.sma(df['volume'], length=20)
         
-        # Correção BBL
         bb = ta.bbands(df['close'], length=20, std=2)
         if bb is not None:
             df['lower'] = bb.iloc[:, 0]
@@ -111,19 +118,22 @@ def obter_dados_yfinance(symbol):
         return None
 
 def run_bot():
-    print(f"🚀 ROBODERIK V71 (SIMULAÇÃO HÍBRIDA) - {datetime.now().strftime('%H:%M')}")
+    hora_atual = obter_data_hora_br()
+    print(f"🚀 ROBODERIK V71 (SIMULAÇÃO HÍBRIDA) - {hora_atual} (BR)")
+    
     estado = carregar_estado()
     
     print(f"💰 Banca Virtual: ${estado['banca_atual']:.2f} | Hoje: {estado['trades_hoje']} trades")
 
-    hoje = datetime.now().strftime("%Y-%m-%d")
-    if estado["data_hoje"] != hoje:
-        estado["data_hoje"] = hoje
+    # Verifica virada de dia (Fuso Brasil)
+    hoje_br = obter_data_hoje_br()
+    if estado["data_hoje"] != hoje_br:
+        estado["data_hoje"] = hoje_br
         estado["trades_hoje"] = 0
         estado["pnl_hoje"] = 0.0
-        print("📅 Novo dia iniciado.")
+        print(f"📅 Novo dia iniciado em SP: {hoje_br}")
 
-    # --- 1. MONITORAR POSIÇÃO ABERTA (Saída Simulada) ---
+    # --- 1. MONITORAR POSIÇÃO ABERTA ---
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
@@ -152,13 +162,11 @@ def run_bot():
             if fechou:
                 estado["banca_atual"] += lucro
                 estado["pnl_hoje"] += lucro
-                estado["posicao_aberta"] = None # Libera slot
+                estado["posicao_aberta"] = None
                 print(f"{motivo} | PnL: ${lucro:.2f} | Banca: ${estado['banca_atual']:.2f}")
                 
-                # Gestão de Martingale Híbrida
                 if lucro > 0:
                     estado["martingale_idx"] = 0
-                    # Regra de Saída da Quarentena
                     if estado["em_quarentena"] and estado["banca_atual"] > estado["pico_banca"] * 0.90:
                         estado["em_quarentena"] = False
                         print("🛡️ Saiu da Quarentena!")
@@ -183,9 +191,9 @@ def run_bot():
         print("⏸️ Limite de trades atingido.")
         return
 
-    # --- 3. ESCANEAMENTO HÍBRIDO (V70 LÓGICA) ---
+    # --- 3. ESCANEAMENTO HÍBRIDO ---
     if estado["posicao_aberta"] is None:
-        print(f"🔎 Analisando mercado...")
+        print(f"🔎 Analisando mercado ({obter_data_hora_br()})...")
         
         for symbol, nome in SYMBOL_MAP.items():
             row = obter_dados_yfinance(symbol)
@@ -219,19 +227,15 @@ def run_bot():
                     mao_base = estado["banca_atual"] * PERC_MAO_SNIPER
                     niveis = NIVEIS_SNIPER
 
-            # EXECUÇÃO DO SINAL
             if signal:
                 print(f"🚀 SINAL {signal.upper()} em {nome} ({modo})")
                 
-                # Cálculo do Tamanho da Posição
                 nivel_idx = min(estado["martingale_idx"], len(niveis)-1)
                 mult = niveis[nivel_idx]
                 valor = mao_base * mult
                 
-                # Trava de tamanho máximo (95% da banca)
                 if valor > estado["banca_atual"] * 0.95: valor = estado["banca_atual"] * 0.95
                 
-                # Definição de Preços Alvo
                 price = float(close)
                 if signal == 'buy':
                     tp = price * (1 + tp_pct)
@@ -240,18 +244,22 @@ def run_bot():
                     tp = price * (1 - tp_pct)
                     sl = price * (1 + sl_pct)
 
-                # Salva no JSON
+                # REGISTRO COM DATA FORMATADA BR
                 estado["posicao_aberta"] = {
-                    "symbol": symbol, "tipo": signal, "modo": modo,
-                    "entrada": price, "tp": tp, "sl": sl, "valor_investido": valor,
-                    "data_hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "symbol": symbol, 
+                    "tipo": signal, 
+                    "modo": modo,
+                    "entrada": price, 
+                    "tp": tp, 
+                    "sl": sl, 
+                    "valor_investido": valor,
+                    "data_hora": obter_data_hora_br() # <--- AQUI A MÁGICA
                 }
                 estado["trades_hoje"] += 1
                 salvar_estado(estado)
-                print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | TP: {tp:.4f} | SL: {sl:.4f}")
+                print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | Data: {obter_data_hora_br()}")
                 break
             else:
-                # Log Transparente
                 status = "GRID" if adx < 25 else ("SNIPER" if adx < 40 else "PERIGO")
                 print(f"   ⚪ {symbol:<9} | {status:<6} | ADX {adx:.1f} | RSI {rsi:.1f}")
 
