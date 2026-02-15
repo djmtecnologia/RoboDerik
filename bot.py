@@ -6,11 +6,12 @@ import time
 from datetime import datetime
 import traceback
 
-# --- AUTO-INSTALAÇÃO ---
+# --- AUTO-INSTALAÇÃO DE DEPENDÊNCIAS ---
 def install(package):
     try:
         __import__(package)
     except ImportError:
+        # Instalação silenciosa para não poluir o log do GitHub
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
 
 for lib in ["yfinance", "pandas", "pandas_ta", "numpy", "pytz"]:
@@ -22,30 +23,36 @@ import pandas_ta as ta
 import numpy as np
 import pytz
 
-# --- CONFIGURAÇÕES V58 (SIMULAÇÃO YFINANCE) ---
+# --- CONFIGURAÇÕES V71 (HÍBRIDO SIMULADO - GITHUB) ---
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
     "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
 }
 TIMEFRAME = "15m"
 ALAVANCAGEM = 3
-PERCENTUAL_MAO_BASE = 0.10
-MARTINGALE_LEVELS = [1.0, 2.5, 5.5, 10.5]
 
-# ALVOS ADAPTATIVOS
-TP_NORMAL = 0.020
-SL_NORMAL = 0.015
-TP_SCALP = 0.008
-SL_SCALP = 0.010
+# GESTÃO DE RISCO HÍBRIDA (VALIDADA V70)
+PERC_MAO_GRID = 0.04    # 4%
+PERC_MAO_SNIPER = 0.10  # 10%
 
+# MARTINGALE ADAPTATIVO
+NIVEIS_GRID = [1.0, 1.5, 2.5, 4.0]
+NIVEIS_SNIPER = [1.0, 2.5, 5.5, 10.5]
+
+# ALVOS
+TP_GRID = 0.010; SL_GRID = 0.008
+TP_SNIPER = 0.025; SL_SNIPER = 0.015
+
+# SEGURANÇA
 STOP_LOSS_DIARIO_PERC = 0.20
 STOP_DRAWDOWN_GLOBAL = 0.25
-MAX_TRADES_DIA = 10
+MAX_TRADES_DIA = 12
 
 STATE_FILE = "estado.json"
 
 def carregar_estado():
-    estado_padrao = {
+    # Estrutura padrão inicial
+    padrao = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
         "martingale_idx": 0,
@@ -53,14 +60,14 @@ def carregar_estado():
         "data_hoje": datetime.now().strftime("%Y-%m-%d"),
         "pnl_hoje": 0.0,
         "em_quarentena": False,
-        "posicao_aberta": None 
+        "posicao_aberta": None # Guarda o trade ativo
     }
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
-                estado_padrao.update(json.load(f))
+                padrao.update(json.load(f))
         except: pass
-    return estado_padrao
+    return padrao
 
 def salvar_estado(estado):
     try:
@@ -72,30 +79,29 @@ def salvar_estado(estado):
 
 def obter_dados_yfinance(symbol):
     try:
-        # Baixa dados (silencioso)
+        # Baixa dados recentes (silencioso)
         df = yf.download(symbol, period="5d", interval=TIMEFRAME, progress=False)
         if df.empty: return None
         
-        # Correção MultiIndex
+        # Tratamento de Colunas
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-            
-        # Padronizar nomes
+        
         df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
-        # Forçar minúsculo
         df.columns = [c.lower() for c in df.columns]
 
-        if len(df) < 30: return None # Dados insuficientes
+        if len(df) < 30: return None
 
-        # Indicadores
+        # Indicadores V70
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
         df['rsi'] = ta.rsi(df['close'], length=14)
+        df['vol_ma'] = ta.sma(df['volume'], length=20)
         
-        # --- CORREÇÃO DO ERRO BBL ---
+        # Correção BBL
         bb = ta.bbands(df['close'], length=20, std=2)
         if bb is not None:
-            df['lower'] = bb.iloc[:, 0] # Coluna 0 é Lower
-            df['upper'] = bb.iloc[:, 2] # Coluna 2 é Upper
+            df['lower'] = bb.iloc[:, 0]
+            df['upper'] = bb.iloc[:, 2]
         else:
             return None
         
@@ -105,10 +111,10 @@ def obter_dados_yfinance(symbol):
         return None
 
 def run_bot():
-    print(f"🚀 ROBODERIK V58 (SIMULAÇÃO) - {datetime.now().strftime('%H:%M')}")
+    print(f"🚀 ROBODERIK V71 (SIMULAÇÃO HÍBRIDA) - {datetime.now().strftime('%H:%M')}")
     estado = carregar_estado()
     
-    print(f"💰 Banca: ${estado['banca_atual']:.2f} | Hoje: {estado['trades_hoje']} trades")
+    print(f"💰 Banca Virtual: ${estado['banca_atual']:.2f} | Hoje: {estado['trades_hoje']} trades")
 
     hoje = datetime.now().strftime("%Y-%m-%d")
     if estado["data_hoje"] != hoje:
@@ -117,11 +123,11 @@ def run_bot():
         estado["pnl_hoje"] = 0.0
         print("📅 Novo dia iniciado.")
 
-    # --- 1. MONITORAR POSIÇÃO ABERTA ---
+    # --- 1. MONITORAR POSIÇÃO ABERTA (Saída Simulada) ---
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
-        print(f"👀 Acompanhando {symbol} ({pos['tipo']})...")
+        print(f"👀 Acompanhando {symbol} ({pos['modo']})...")
         
         dados = obter_dados_yfinance(symbol)
         if dados is not None:
@@ -146,14 +152,18 @@ def run_bot():
             if fechou:
                 estado["banca_atual"] += lucro
                 estado["pnl_hoje"] += lucro
-                estado["posicao_aberta"] = None
+                estado["posicao_aberta"] = None # Libera slot
                 print(f"{motivo} | PnL: ${lucro:.2f} | Banca: ${estado['banca_atual']:.2f}")
                 
+                # Gestão de Martingale Híbrida
                 if lucro > 0:
                     estado["martingale_idx"] = 0
-                    if estado["em_quarentena"]: estado["em_quarentena"] = False
+                    # Regra de Saída da Quarentena
+                    if estado["em_quarentena"] and estado["banca_atual"] > estado["pico_banca"] * 0.90:
+                        estado["em_quarentena"] = False
+                        print("🛡️ Saiu da Quarentena!")
                 else:
-                    estado["martingale_idx"] = min(estado["martingale_idx"] + 1, 3)
+                    estado["martingale_idx"] += 1
                 
                 if estado["banca_atual"] > estado["pico_banca"]: estado["pico_banca"] = estado["banca_atual"]
                 salvar_estado(estado)
@@ -173,48 +183,55 @@ def run_bot():
         print("⏸️ Limite de trades atingido.")
         return
 
-    # --- 3. ESCANEAMENTO ---
+    # --- 3. ESCANEAMENTO HÍBRIDO (V70 LÓGICA) ---
     if estado["posicao_aberta"] is None:
-        print(f"🔎 Escaneando mercado...")
+        print(f"🔎 Analisando mercado...")
         
         for symbol, nome in SYMBOL_MAP.items():
-            data = obter_dados_yfinance(symbol)
-            if data is None: continue
+            row = obter_dados_yfinance(symbol)
+            if row is None: continue
 
-            adx = data['adx']
-            rsi = data['rsi']
-            close = data['close']
-            lower = data['lower']
-            upper = data['upper']
+            adx = row['adx']; rsi = row['rsi']; close = row['close']
+            lower = row['lower']; upper = row['upper']
             
-            signal = None; modo = ""; tp_pct = 0; sl_pct = 0; msg = ""
+            signal = None; modo = ""; tp_pct = 0; sl_pct = 0
+            mao_base = 0; niveis = []
 
-            # Lógica Híbrida V56
-            if adx < 20:
-                modo = "SCALPER"
-                if rsi < 35 and close < lower: signal = 'buy'
-                elif rsi > 65 and close > upper: signal = 'sell'
-                else: msg = f"RSI {rsi:.1f} (Neutro Scalp)"
-                tp_pct = TP_SCALP; sl_pct = SL_SCALP
+            # Lógica GRID (Lateral - ADX < 25)
+            if adx < 25:
+                if (close < lower and rsi < 45): signal = 'buy'
+                elif (close > upper and rsi > 55): signal = 'sell'
+                
+                if signal:
+                    modo = "GRID"
+                    tp_pct = TP_GRID; sl_pct = SL_GRID
+                    mao_base = estado["banca_atual"] * PERC_MAO_GRID
+                    niveis = NIVEIS_GRID
 
-            elif adx < 30:
-                modo = "SNIPER"
-                if rsi < 28 and close < lower: signal = 'buy'
-                elif rsi > 72 and close > upper: signal = 'sell'
-                else: msg = f"RSI {rsi:.1f} (Aguardando Extremo)"
-                tp_pct = TP_NORMAL; sl_pct = SL_NORMAL
-            
-            else:
-                modo = "PERIGO"
-                msg = f"Tendência Forte (ADX {adx:.1f})"
+            # Lógica SNIPER (Tendência - 25 <= ADX < 40)
+            elif 25 <= adx < 40 and row['volume'] > row['vol_ma']:
+                if (rsi < 28 and close < lower): signal = 'buy'
+                elif (rsi > 72 and close > upper): signal = 'sell'
+                
+                if signal:
+                    modo = "SNIPER"
+                    tp_pct = TP_SNIPER; sl_pct = SL_SNIPER
+                    mao_base = estado["banca_atual"] * PERC_MAO_SNIPER
+                    niveis = NIVEIS_SNIPER
 
+            # EXECUÇÃO DO SINAL
             if signal:
                 print(f"🚀 SINAL {signal.upper()} em {nome} ({modo})")
                 
-                mult = MARTINGALE_LEVELS[estado["martingale_idx"]]
-                valor = (estado["banca_atual"] * PERCENTUAL_MAO_BASE) * mult
+                # Cálculo do Tamanho da Posição
+                nivel_idx = min(estado["martingale_idx"], len(niveis)-1)
+                mult = niveis[nivel_idx]
+                valor = mao_base * mult
+                
+                # Trava de tamanho máximo (95% da banca)
                 if valor > estado["banca_atual"] * 0.95: valor = estado["banca_atual"] * 0.95
                 
+                # Definição de Preços Alvo
                 price = float(close)
                 if signal == 'buy':
                     tp = price * (1 + tp_pct)
@@ -223,18 +240,20 @@ def run_bot():
                     tp = price * (1 - tp_pct)
                     sl = price * (1 + sl_pct)
 
+                # Salva no JSON
                 estado["posicao_aberta"] = {
-                    "symbol": symbol, "tipo": signal, "entrada": price,
-                    "tp": tp, "sl": sl, "valor_investido": valor,
+                    "symbol": symbol, "tipo": signal, "modo": modo,
+                    "entrada": price, "tp": tp, "sl": sl, "valor_investido": valor,
                     "data_hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
                 estado["trades_hoje"] += 1
                 salvar_estado(estado)
-                print(f"   💵 Entrada: ${valor:.2f} | TP: {tp:.4f} | SL: {sl:.4f}")
+                print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | TP: {tp:.4f} | SL: {sl:.4f}")
                 break
             else:
                 # Log Transparente
-                print(f"   ⚪ {symbol:<9} | {modo:<8} | {msg}")
+                status = "GRID" if adx < 25 else ("SNIPER" if adx < 40 else "PERIGO")
+                print(f"   ⚪ {symbol:<9} | {status:<6} | ADX {adx:.1f} | RSI {rsi:.1f}")
 
     salvar_estado(estado)
 
@@ -242,6 +261,6 @@ if __name__ == "__main__":
     try:
         run_bot()
     except Exception as e:
-        print(f"❌ Erro: {e}")
+        print(f"❌ Erro Fatal: {e}")
         traceback.print_exc()
-                
+        
