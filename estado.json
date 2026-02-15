@@ -2,11 +2,20 @@
     "banca_atual": 60.07659251105328,
     "pico_banca": 60.07659251105328,
     "martingale_idx": 0,
-    "trades_hoje": 0,
+    "trades_hoje": 1,
     "data_hoje": "15/02/2026",
     "pnl_hoje": 0.07659251105327945,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BTC-USD",
+        "tipo": "sell",
+        "modo": "GRID",
+        "entrada": 70331.96875,
+        "tp": 69628.6490625,
+        "sl": 70894.6245,
+        "valor_investido": 2.4030637004421314,
+        "data_hora": "15/02/2026 01:15:25"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
