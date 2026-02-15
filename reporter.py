@@ -12,13 +12,19 @@ def install(package):
     except ImportError:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
 
-for lib in ["pandas", "openpyxl", "xlsxwriter"]:
+# Adicionei 'pytz' na lista para garantir o fuso horário
+for lib in ["pandas", "openpyxl", "xlsxwriter", "pytz"]:
     install(lib)
+
+import pytz # Importação do fuso
 
 # --- CONFIGURAÇÕES ---
 JSON_FILE = "estado.json"
 CSV_FILE = "historico_trades.csv"
 EXCEL_FILE = "Relatorio_RoboDerik_V70.xlsx"
+
+# --- CONFIGURAÇÃO DE FUSO HORÁRIO (BR) ---
+FUSO_BR = pytz.timezone('America/Sao_Paulo')
 
 def gerar_relatorio():
     # 1. Ler o Estado Atual
@@ -30,11 +36,13 @@ def gerar_relatorio():
         data = json.load(f)
 
     # 2. Preparar os Dados para o Histórico
-    # Se houver posição aberta, calculamos o valor investido, senão é 0
     investido = data.get("posicao_aberta", {}).get("valor_investido", 0) if data.get("posicao_aberta") else 0
     
+    # AQUI ESTÁ A CORREÇÃO: Usamos o Fuso BR explicitamente
+    data_hora_br = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+    
     novo_registro = {
-        "Data": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "Data": data_hora_br,
         "Banca Total ($)": round(data.get("banca_atual", 60.0), 2),
         "Investido ($)": round(investido, 2),
         "Livre ($)": round(data.get("banca_atual", 60.0) - investido, 2),
@@ -51,7 +59,7 @@ def gerar_relatorio():
         if ultima_data != novo_registro["Data"]:
             df = pd.concat([df, pd.DataFrame([novo_registro])], ignore_index=True)
     else:
-        # Se é a primeira vez, cria o arquivo e adiciona o saldo inicial para o gráfico ficar bonito
+        # Se é a primeira vez, cria o arquivo com saldo inicial
         registro_inicial = novo_registro.copy()
         registro_inicial["Data"] = "Inicio"
         registro_inicial["Banca Total ($)"] = data.get("banca_inicial", 60.0)
@@ -61,9 +69,9 @@ def gerar_relatorio():
         df = pd.DataFrame([registro_inicial, novo_registro])
 
     df.to_csv(CSV_FILE, index=False)
-    print(f"✅ Histórico atualizado em {CSV_FILE}")
+    print(f"✅ Histórico atualizado em {CSV_FILE} (Horário SP)")
 
-    # 4. Gerar o Excel com Gráficos (A Mágica)
+    # 4. Gerar o Excel com Gráficos
     writer = pd.ExcelWriter(EXCEL_FILE, engine='xlsxwriter')
     df.to_excel(writer, sheet_name='Performance', index=False)
 
@@ -75,34 +83,33 @@ def gerar_relatorio():
     formato_verde = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
     formato_vermelho = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
 
-    # Aplica formato de dinheiro nas colunas B, C, D, E
     worksheet.set_column('B:E', 15, formato_dinheiro)
-    worksheet.set_column('A:A', 20) # Coluna Data mais larga
+    worksheet.set_column('A:A', 22) # Aumentei um pouco a largura da data
 
-    # Regra Condicional para o PnL (Verde se positivo, Vermelho se negativo)
+    # Regras de Cor PnL
     worksheet.conditional_format('E2:E1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': formato_verde})
     worksheet.conditional_format('E2:E1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': formato_vermelho})
 
-    # --- GRÁFICO 1: EVOLUÇÃO DA BANCA (LINHA) ---
+    # --- GRÁFICO 1: EVOLUÇÃO ---
     chart_banca = workbook.add_chart({'type': 'line'})
     chart_banca.add_series({
         'name':       'Evolução da Banca',
-        'categories': ['Performance', 1, 0, len(df), 0], # Coluna Data
-        'values':     ['Performance', 1, 1, len(df), 1], # Coluna Banca Total
+        'categories': ['Performance', 1, 0, len(df), 0],
+        'values':     ['Performance', 1, 1, len(df), 1],
         'line':       {'color': 'blue', 'width': 2.5},
         'marker':     {'type': 'circle', 'size': 5}
     })
-    chart_banca.set_title({'name': 'Crescimento do Patrimônio (Juros Compostos)'})
+    chart_banca.set_title({'name': 'Crescimento do Patrimônio'})
     chart_banca.set_y_axis({'name': 'Valor em USD'})
     chart_banca.set_style(10)
     worksheet.insert_chart('H2', chart_banca)
 
-    # --- GRÁFICO 2: LUCRO DIÁRIO (COLUNAS) ---
+    # --- GRÁFICO 2: LUCRO DIÁRIO ---
     chart_pnl = workbook.add_chart({'type': 'column'})
     chart_pnl.add_series({
         'name':       'Lucro/Prejuízo Diário',
         'categories': ['Performance', 1, 0, len(df), 0],
-        'values':     ['Performance', 1, 4, len(df), 4], # Coluna PnL
+        'values':     ['Performance', 1, 4, len(df), 4],
         'fill':       {'color': '#50C878'},
         'border':     {'color': 'black'}
     })
@@ -111,9 +118,8 @@ def gerar_relatorio():
     worksheet.insert_chart('H18', chart_pnl)
 
     writer.close()
-    print(f"📊 Relatório Gráfico gerado com sucesso: {EXCEL_FILE}")
-    print("👉 Abra o arquivo Excel para mostrar aos seus amigos!")
+    print(f"📊 Relatório Gráfico gerado: {EXCEL_FILE}")
 
 if __name__ == "__main__":
     gerar_relatorio()
-
+    
