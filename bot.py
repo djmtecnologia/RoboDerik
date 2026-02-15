@@ -34,7 +34,7 @@ def obter_data_hoje_br():
     """Retorna apenas a data atual em SP no formato DD/MM/YYYY"""
     return datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
-# --- CONFIGURAÇÕES V73 (SIMULAÇÃO HÍBRIDA + AUDITORIA) ---
+# --- CONFIGURAÇÕES V75 (SIMULAÇÃO HÍBRIDA + METADADOS) ---
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
     "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
@@ -62,7 +62,7 @@ MAX_TRADES_DIA = 12
 STATE_FILE = "estado.json"
 
 def carregar_estado():
-    # Estado padrão com datas BR e Histórico
+    # Estado padrão com datas BR
     padrao = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
@@ -72,7 +72,7 @@ def carregar_estado():
         "pnl_hoje": 0.0,
         "em_quarentena": False,
         "posicao_aberta": None,
-        "historico_trades": [] # <--- CAMPO NOVO PARA AUDITORIA
+        "historico_trades": [] # <--- CAMPO DE AUDITORIA
     }
     if os.path.exists(STATE_FILE):
         try:
@@ -124,7 +124,7 @@ def obter_dados_yfinance(symbol):
 
 def run_bot():
     hora_atual = obter_data_hora_br()
-    print(f"🚀 ROBODERIK V73 (SIMULAÇÃO HÍBRIDA + AUDITORIA) - {hora_atual} (BR)")
+    print(f"🚀 ROBODERIK V75 (METADADOS + AUDITORIA) - {hora_atual} (BR)")
     
     estado = carregar_estado()
     
@@ -169,20 +169,26 @@ def run_bot():
                 estado["banca_atual"] += lucro
                 estado["pnl_hoje"] += lucro
                 
-                # --- REGISTRO DE AUDITORIA ---
+                # --- GRAVAÇÃO DO HISTÓRICO COM METADADOS (V75) ---
                 novo_trade = {
                     "data": obter_data_hora_br(),
                     "symbol": symbol,
                     "modo": pos['modo'],
+                    "tipo": pos['tipo'].upper(),
+                    "entrada": pos['entrada'],
+                    "saida": atual,
+                    "tp": pos.get('tp', 0.0), # Usa .get para segurança
+                    "sl": pos.get('sl', 0.0),
+                    "criterio": pos.get("criterio", "N/A"), # Se não tiver critério, põe N/A
                     "resultado": motivo,
-                    "lucro": round(lucro, 2),
-                    "saldo_final": round(estado["banca_atual"], 2)
+                    "lucro_usd": round(lucro, 2),
+                    "saldo_pos_trade": round(estado["banca_atual"], 2)
                 }
                 estado["historico_trades"].append(novo_trade)
                 # Mantém histórico limpo (últimos 100)
                 if len(estado["historico_trades"]) > 100:
                     estado["historico_trades"].pop(0)
-                # -----------------------------
+                # --------------------------------------------------
 
                 estado["posicao_aberta"] = None
                 print(f"{motivo} | PnL: ${lucro:.2f} | Banca: ${estado['banca_atual']:.2f}")
@@ -226,11 +232,14 @@ def run_bot():
             
             signal = None; modo = ""; tp_pct = 0; sl_pct = 0
             mao_base = 0; niveis = []
+            criterio_desc = ""
 
             # Lógica GRID (Lateral - ADX < 25)
             if adx < 25:
-                if (close < lower and rsi < 45): signal = 'buy'
-                elif (close > upper and rsi > 55): signal = 'sell'
+                if (close < lower and rsi < 45): 
+                    signal = 'buy'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} < 45 (Oversold)"
+                elif (close > upper and rsi > 55): 
+                    signal = 'sell'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} > 55 (Overbought)"
                 
                 if signal:
                     modo = "GRID"
@@ -240,8 +249,10 @@ def run_bot():
 
             # Lógica SNIPER (Tendência - 25 <= ADX < 40)
             elif 25 <= adx < 40 and row['volume'] > row['vol_ma']:
-                if (rsi < 28 and close < lower): signal = 'buy'
-                elif (rsi > 72 and close > upper): signal = 'sell'
+                if (rsi < 28 and close < lower): 
+                    signal = 'buy'; criterio_desc = f"ADX {adx:.1f} (Trend) | RSI {rsi:.1f} < 28"
+                elif (rsi > 72 and close > upper): 
+                    signal = 'sell'; criterio_desc = f"ADX {adx:.1f} (Trend) | RSI {rsi:.1f} > 72"
                 
                 if signal:
                     modo = "SNIPER"
@@ -266,7 +277,7 @@ def run_bot():
                     tp = price * (1 - tp_pct)
                     sl = price * (1 + sl_pct)
 
-                # REGISTRO COM DATA FORMATADA BR
+                # REGISTRO COMPLETO (V75)
                 estado["posicao_aberta"] = {
                     "symbol": symbol, 
                     "tipo": signal, 
@@ -275,14 +286,14 @@ def run_bot():
                     "tp": tp, 
                     "sl": sl, 
                     "valor_investido": valor,
+                    "criterio": criterio_desc, # <--- CAMPO NOVO
                     "data_hora": obter_data_hora_br() 
                 }
                 estado["trades_hoje"] += 1
                 salvar_estado(estado)
-                print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | Data: {obter_data_hora_br()}")
+                print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | Motivo: {criterio_desc}")
                 break
             else:
-                # Log Transparente
                 status = "GRID" if adx < 25 else ("SNIPER" if adx < 40 else "PERIGO")
                 print(f"   ⚪ {symbol:<9} | {status:<6} | ADX {adx:.1f} | RSI {rsi:.1f}")
 
@@ -294,4 +305,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Erro Fatal: {e}")
         traceback.print_exc()
-            
+        
