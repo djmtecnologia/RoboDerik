@@ -15,10 +15,12 @@ for lib in ["pandas", "openpyxl", "xlsxwriter", "pytz"]: install(lib)
 
 # --- CONFIGURAÇÕES ---
 JSON_FILE = "estado.json"
-EXCEL_FILE = "Relatorio_Oficial_Trades.xlsx"
+EXCEL_FILE = "Relatorio_Oficial.xlsx" # NOME FINAL DO ARQUIVO
 FUSO_BR = pytz.timezone('America/Sao_Paulo')
 
 def gerar_relatorio():
+    print("🔄 Gerando relatório...")
+    
     if not os.path.exists(JSON_FILE):
         print(f"❌ Arquivo {JSON_FILE} não encontrado.")
         return
@@ -26,31 +28,49 @@ def gerar_relatorio():
     with open(JSON_FILE, 'r') as f:
         data = json.load(f)
 
+    # 1. LER DADOS DO HISTÓRICO (JSON)
     raw_trades = data.get("historico_trades", [])
     
     if not raw_trades:
         print("⚠️ Nenhum trade fechado para relatar.")
         return
 
-    # --- 1. NORMALIZAÇÃO DOS DADOS (O SEGREDO) ---
-    # Transforma trades antigos e novos num formato único
+    # 2. NORMALIZAR DADOS (Converter legado para novo)
     trades_processados = []
     
+    # Adiciona saldo inicial (Linha 0 para o gráfico ficar bonito)
+    banca_inicial = data.get("banca_inicial", 60.0)
+    trades_processados.append({
+        "Data": "Inicio",
+        "Par": "-", "Modo": "Depósito", "Tipo": "-",
+        "Entrada": 0, "Saida": 0, "TP": 0, "SL": 0,
+        "Criterio": "-", "Resultado": "-",
+        "Lucro ($)": 0.0,
+        "Saldo Acumulado": banca_inicial
+    })
+
     for t in raw_trades:
-        # Detecta se é chave antiga (lucro) ou nova (lucro_usd)
+        # Lógica inteligente para pegar chaves novas OU antigas
         lucro_real = t.get("lucro_usd") if "lucro_usd" in t else t.get("lucro", 0.0)
-        saldo_real = t.get("saldo_pos_trade") if "saldo_pos_trade" in t else t.get("saldo_final", 0.0)
         
+        # Se tiver 'saldo_pos_trade', usa. Se não, calcula somando.
+        if "saldo_pos_trade" in t:
+            saldo_real = t.get("saldo_pos_trade")
+        elif "saldo_final" in t:
+            saldo_real = t.get("saldo_final")
+        else:
+            saldo_real = 0.0 # Fallback
+
         item = {
             "Data": t.get("data"),
             "Par": t.get("symbol"),
             "Modo": t.get("modo"),
-            "Tipo": t.get("tipo", "N/A").upper(), # Garante maiúsculo
+            "Tipo": t.get("tipo", "N/A").upper(),
             "Entrada": t.get("entrada", 0.0),
             "Saida": t.get("saida", 0.0),
             "TP": t.get("tp", 0.0),
             "SL": t.get("sl", 0.0),
-            "Criterio": t.get("criterio", "Trade Antigo (Sem registro)"),
+            "Criterio": t.get("criterio", "Trade Antigo"),
             "Resultado": t.get("resultado", ""),
             "Lucro ($)": float(lucro_real),
             "Saldo Acumulado": float(saldo_real)
@@ -59,57 +79,52 @@ def gerar_relatorio():
 
     df = pd.DataFrame(trades_processados)
 
-    # --- 2. GERAR EXCEL ---
+    # 3. GERAR EXCEL
     writer = pd.ExcelWriter(EXCEL_FILE, engine='xlsxwriter')
-    df.to_excel(writer, sheet_name='Extrato_Detalhado', index=False)
+    df.to_excel(writer, sheet_name='Relatorio_Trades', index=False)
 
     workbook = writer.book
-    worksheet = writer.sheets['Extrato_Detalhado']
+    worksheet = writer.sheets['Relatorio_Trades']
 
-    # --- 3. FORMATAÇÃO VISUAL ---
-    # Formatos
+    # 4. FORMATAÇÃO VISUAL
     fmt_money = workbook.add_format({'num_format': '$ #,##0.00'})
     fmt_num = workbook.add_format({'num_format': '#,##0.00'})
     fmt_center = workbook.add_format({'align': 'center'})
-    
-    # Cores Condicionais para Lucro
-    fmt_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
-    fmt_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+    fmt_header = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'border': 1})
 
-    # Aplicação de Larguras e Formatos
+    # Larguras
     worksheet.set_column('A:A', 20, fmt_center) # Data
     worksheet.set_column('B:D', 10, fmt_center) # Par/Modo/Tipo
-    worksheet.set_column('E:H', 14, fmt_num)    # Preços (Entrada/Saída/TP/SL)
-    worksheet.set_column('I:I', 30)             # Critério (Largo)
+    worksheet.set_column('E:H', 14, fmt_num)    # Preços
+    worksheet.set_column('I:I', 35)             # Criterio (Largo)
     worksheet.set_column('J:J', 15, fmt_center) # Resultado
     worksheet.set_column('K:L', 18, fmt_money)  # Lucro e Saldo
 
-    # Regras de Cor (Coluna K - Lucro)
-    worksheet.conditional_format('K2:K1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': fmt_green})
-    worksheet.conditional_format('K2:K1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': fmt_red})
+    # Cores no Lucro (Verde/Vermelho)
+    green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+    red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+    worksheet.conditional_format('K2:K1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': green})
+    worksheet.conditional_format('K2:K1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': red})
 
-    # --- 4. GRÁFICO DE LINHA (EVOLUÇÃO REAL) ---
+    # 5. GRÁFICO DE EVOLUÇÃO
     chart = workbook.add_chart({'type': 'line'})
-    
-    # Série: Saldo Acumulado
     chart.add_series({
         'name':       'Evolução da Banca',
-        'categories': ['Extrato_Detalhado', 1, 0, len(df), 0], # Coluna A (Data)
-        'values':     ['Extrato_Detalhado', 1, 11, len(df), 11], # Coluna L (Saldo Acumulado)
-        'line':       {'color': '#2080D0', 'width': 2.5},
-        'marker':     {'type': 'circle', 'size': 5, 'border': {'color': '#2080D0'}, 'fill': {'color': 'white'}}
+        'categories': ['Relatorio_Trades', 1, 0, len(df), 0], # Coluna A (Data)
+        'values':     ['Relatorio_Trades', 1, 11, len(df), 11], # Coluna L (Saldo)
+        'line':       {'color': '#2980B9', 'width': 2.5},
+        'marker':     {'type': 'circle', 'size': 6}
     })
-
-    chart.set_title({'name': 'Performance: Trades Fechados'})
-    chart.set_y_axis({'name': 'Saldo da Banca ($)'})
+    chart.set_title({'name': 'Performance: Trades Realizados'})
+    chart.set_y_axis({'name': 'Saldo ($)'})
     chart.set_size({'width': 800, 'height': 400})
     
-    # Insere o gráfico ao lado da tabela
+    # Posiciona o gráfico ao lado da tabela (Coluna N)
     worksheet.insert_chart('N2', chart)
 
     writer.close()
-    print(f"📊 Relatório Gerado com Sucesso: {EXCEL_FILE}")
-    print(f"✅ Processados {len(df)} trades do histórico.")
+    print(f"✅ SUCESSO! Relatório gerado: {EXCEL_FILE}")
+    print(f"📊 Total de Trades Processados: {len(df)-1}")
 
 if __name__ == "__main__":
     gerar_relatorio()
