@@ -11,7 +11,6 @@ def install(package):
     try:
         __import__(package)
     except ImportError:
-        # Instalação silenciosa
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
 
 for lib in ["yfinance", "pandas", "pandas_ta", "numpy", "pytz"]:
@@ -21,20 +20,18 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-import pytz # Importante para o fuso horário
+import pytz
 
 # --- CONFIGURAÇÕES DE FUSO E DATA ---
 FUSO_BR = pytz.timezone('America/Sao_Paulo')
 
 def obter_data_hora_br():
-    """Retorna data e hora atuais em SP no formato DD/MM/YYYY HH:MM:SS"""
     return datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
 def obter_data_hoje_br():
-    """Retorna apenas a data atual em SP no formato DD/MM/YYYY"""
     return datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
-# --- CONFIGURAÇÕES V75 (SIMULAÇÃO HÍBRIDA + METADADOS) ---
+# --- CONFIGURAÇÕES V80 (AUDITORIA DETALHADA MARTINGALE) ---
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana",
     "BNB-USD": "Binance Coin", "XRP-USD": "XRP", "ADA-USD": "Cardano"
@@ -42,11 +39,11 @@ SYMBOL_MAP = {
 TIMEFRAME = "15m"
 ALAVANCAGEM = 3
 
-# GESTÃO DE RISCO HÍBRIDA
+# GESTÃO DE RISCO
 PERC_MAO_GRID = 0.04    # 4%
 PERC_MAO_SNIPER = 0.10  # 10%
 
-# MARTINGALE ADAPTATIVO
+# MARTINGALE ADAPTATIVO (FATORES DE MULTIPLICAÇÃO)
 NIVEIS_GRID = [1.0, 1.5, 2.5, 4.0]
 NIVEIS_SNIPER = [1.0, 2.5, 5.5, 10.5]
 
@@ -62,26 +59,23 @@ MAX_TRADES_DIA = 12
 STATE_FILE = "estado.json"
 
 def carregar_estado():
-    # Estado padrão com datas BR
     padrao = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
         "martingale_idx": 0,
         "trades_hoje": 0,
-        "data_hoje": obter_data_hoje_br(), # Data BR
+        "data_hoje": obter_data_hoje_br(),
         "pnl_hoje": 0.0,
         "em_quarentena": False,
         "posicao_aberta": None,
-        "historico_trades": [] # <--- CAMPO DE AUDITORIA
+        "historico_trades": []
     }
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
                 carregado = json.load(f)
                 padrao.update(carregado)
-                # Garante compatibilidade se o arquivo json for antigo
-                if "historico_trades" not in padrao:
-                    padrao["historico_trades"] = []
+                if "historico_trades" not in padrao: padrao["historico_trades"] = []
         except: pass
     return padrao
 
@@ -97,49 +91,37 @@ def obter_dados_yfinance(symbol):
     try:
         df = yf.download(symbol, period="5d", interval=TIMEFRAME, progress=False)
         if df.empty: return None
-        
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
         df.columns = [c.lower() for c in df.columns]
-
         if len(df) < 30: return None
 
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
         df['rsi'] = ta.rsi(df['close'], length=14)
         df['vol_ma'] = ta.sma(df['volume'], length=20)
-        
         bb = ta.bbands(df['close'], length=20, std=2)
         if bb is not None:
-            df['lower'] = bb.iloc[:, 0]
-            df['upper'] = bb.iloc[:, 2]
-        else:
-            return None
-        
+            df['lower'] = bb.iloc[:, 0]; df['upper'] = bb.iloc[:, 2]
+        else: return None
         return df.iloc[-1]
-    except Exception as e:
-        print(f"⚠️ Erro dados {symbol}: {e}")
-        return None
+    except: return None
 
 def run_bot():
     hora_atual = obter_data_hora_br()
-    print(f"🚀 ROBODERIK V75 (METADADOS + AUDITORIA) - {hora_atual} (BR)")
+    print(f"🚀 ROBODERIK V80 (MARTINGALE FACTOR) - {hora_atual} (BR)")
     
     estado = carregar_estado()
-    
     trades_totais = len(estado.get("historico_trades", []))
-    print(f"💰 Banca Virtual: ${estado['banca_atual']:.2f} | Histórico: {trades_totais} trades")
+    print(f"💰 Banca: ${estado['banca_atual']:.2f} | Histórico: {trades_totais} | MG Atual: Lvl {estado['martingale_idx']}")
 
-    # Verifica virada de dia (Fuso Brasil)
     hoje_br = obter_data_hoje_br()
     if estado["data_hoje"] != hoje_br:
         estado["data_hoje"] = hoje_br
         estado["trades_hoje"] = 0
         estado["pnl_hoje"] = 0.0
-        print(f"📅 Novo dia iniciado em SP: {hoje_br}")
+        print(f"📅 Novo dia: {hoje_br}")
 
-    # --- 1. MONITORAR POSIÇÃO ABERTA ---
+    # --- 1. MONITORAR ---
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
@@ -169,35 +151,35 @@ def run_bot():
                 estado["banca_atual"] += lucro
                 estado["pnl_hoje"] += lucro
                 
-                # --- GRAVAÇÃO DO HISTÓRICO COM METADADOS (V75) ---
+                # --- REGISTRO COMPLETO V80 ---
                 novo_trade = {
                     "data": obter_data_hora_br(),
                     "symbol": symbol,
                     "modo": pos['modo'],
                     "tipo": pos['tipo'].upper(),
+                    "nivel_mg": pos.get('nivel_mg', 0),    # Nivel (0, 1, 2)
+                    "fator_mg": pos.get('fator_mg', 1.0),  # Fator (1.0x, 1.5x) <--- NOVO
+                    "investido": round(pos['valor_investido'], 2),
+                    "perc_banca": pos.get('perc_banca', 0.0),
                     "entrada": pos['entrada'],
                     "saida": atual,
-                    "tp": pos.get('tp', 0.0), # Usa .get para segurança
+                    "tp": pos.get('tp', 0.0),
                     "sl": pos.get('sl', 0.0),
-                    "criterio": pos.get("criterio", "N/A"), # Se não tiver critério, põe N/A
+                    "criterio": pos.get("criterio", "N/A"),
                     "resultado": motivo,
                     "lucro_usd": round(lucro, 2),
                     "saldo_pos_trade": round(estado["banca_atual"], 2)
                 }
                 estado["historico_trades"].append(novo_trade)
-                # Mantém histórico limpo (últimos 100)
-                if len(estado["historico_trades"]) > 100:
-                    estado["historico_trades"].pop(0)
-                # --------------------------------------------------
+                if len(estado["historico_trades"]) > 100: estado["historico_trades"].pop(0)
 
                 estado["posicao_aberta"] = None
-                print(f"{motivo} | PnL: ${lucro:.2f} | Banca: ${estado['banca_atual']:.2f}")
+                print(f"{motivo} | PnL: ${lucro:.2f} | Fator MG: {novo_trade['fator_mg']}x")
                 
                 if lucro > 0:
                     estado["martingale_idx"] = 0
                     if estado["em_quarentena"] and estado["banca_atual"] > estado["pico_banca"] * 0.90:
                         estado["em_quarentena"] = False
-                        print("🛡️ Saiu da Quarentena!")
                 else:
                     estado["martingale_idx"] += 1
                 
@@ -205,24 +187,23 @@ def run_bot():
                 salvar_estado(estado)
                 return
 
-    # --- 2. TRAVAS DE SEGURANÇA ---
+    # --- 2. TRAVAS ---
     drawdown = (estado["pico_banca"] - estado["banca_atual"]) / estado["pico_banca"]
     if drawdown >= STOP_DRAWDOWN_GLOBAL:
         estado["em_quarentena"] = True
         print(f"🛑 Quarentena (DD {drawdown*100:.1f}%)")
 
     if estado["pnl_hoje"] <= -(estado["banca_atual"] * STOP_LOSS_DIARIO_PERC):
-        print("🛑 Stop Diário atingido.")
+        print("🛑 Stop Diário.")
         return
 
     if estado["trades_hoje"] >= MAX_TRADES_DIA:
-        print("⏸️ Limite de trades atingido.")
+        print("⏸️ Limite trades.")
         return
 
-    # --- 3. ESCANEAMENTO HÍBRIDO ---
+    # --- 3. ESCANEAMENTO ---
     if estado["posicao_aberta"] is None:
-        print(f"🔎 Analisando mercado ({obter_data_hora_br()})...")
-        
+        print(f"🔎 Analisando ({obter_data_hora_br()})...")
         for symbol, nome in SYMBOL_MAP.items():
             row = obter_dados_yfinance(symbol)
             if row is None: continue
@@ -234,64 +215,46 @@ def run_bot():
             mao_base = 0; niveis = []
             criterio_desc = ""
 
-            # Lógica GRID (Lateral - ADX < 25)
             if adx < 25:
-                if (close < lower and rsi < 45): 
-                    signal = 'buy'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} < 45 (Oversold)"
-                elif (close > upper and rsi > 55): 
-                    signal = 'sell'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} > 55 (Overbought)"
-                
+                if (close < lower and rsi < 45): signal = 'buy'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} < 45"
+                elif (close > upper and rsi > 55): signal = 'sell'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} > 55"
                 if signal:
-                    modo = "GRID"
-                    tp_pct = TP_GRID; sl_pct = SL_GRID
-                    mao_base = estado["banca_atual"] * PERC_MAO_GRID
-                    niveis = NIVEIS_GRID
+                    modo = "GRID"; tp_pct = TP_GRID; sl_pct = SL_GRID
+                    mao_base = estado["banca_atual"] * PERC_MAO_GRID; niveis = NIVEIS_GRID
 
-            # Lógica SNIPER (Tendência - 25 <= ADX < 40)
             elif 25 <= adx < 40 and row['volume'] > row['vol_ma']:
-                if (rsi < 28 and close < lower): 
-                    signal = 'buy'; criterio_desc = f"ADX {adx:.1f} (Trend) | RSI {rsi:.1f} < 28"
-                elif (rsi > 72 and close > upper): 
-                    signal = 'sell'; criterio_desc = f"ADX {adx:.1f} (Trend) | RSI {rsi:.1f} > 72"
-                
+                if (rsi < 28 and close < lower): signal = 'buy'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} < 28"
+                elif (rsi > 72 and close > upper): signal = 'sell'; criterio_desc = f"ADX {adx:.1f} | RSI {rsi:.1f} > 72"
                 if signal:
-                    modo = "SNIPER"
-                    tp_pct = TP_SNIPER; sl_pct = SL_SNIPER
-                    mao_base = estado["banca_atual"] * PERC_MAO_SNIPER
-                    niveis = NIVEIS_SNIPER
+                    modo = "SNIPER"; tp_pct = TP_SNIPER; sl_pct = SL_SNIPER
+                    mao_base = estado["banca_atual"] * PERC_MAO_SNIPER; niveis = NIVEIS_SNIPER
 
             if signal:
                 print(f"🚀 SINAL {signal.upper()} em {nome} ({modo})")
-                
                 nivel_idx = min(estado["martingale_idx"], len(niveis)-1)
-                mult = niveis[nivel_idx]
+                mult = niveis[nivel_idx] # <--- PEGA O FATOR
                 valor = mao_base * mult
-                
                 if valor > estado["banca_atual"] * 0.95: valor = estado["banca_atual"] * 0.95
                 
                 price = float(close)
-                if signal == 'buy':
-                    tp = price * (1 + tp_pct)
-                    sl = price * (1 - sl_pct)
-                else:
-                    tp = price * (1 - tp_pct)
-                    sl = price * (1 + sl_pct)
+                tp = price * (1 + tp_pct) if signal == 'buy' else price * (1 - tp_pct)
+                sl = price * (1 - sl_pct) if signal == 'buy' else price * (1 + sl_pct)
+                
+                perc_banca_usada = round((valor / estado["banca_atual"]) * 100, 2)
 
-                # REGISTRO COMPLETO (V75)
                 estado["posicao_aberta"] = {
-                    "symbol": symbol, 
-                    "tipo": signal, 
-                    "modo": modo,
-                    "entrada": price, 
-                    "tp": tp, 
-                    "sl": sl, 
+                    "symbol": symbol, "tipo": signal, "modo": modo,
+                    "entrada": price, "tp": tp, "sl": sl, 
                     "valor_investido": valor,
-                    "criterio": criterio_desc, # <--- CAMPO NOVO
-                    "data_hora": obter_data_hora_br() 
+                    "nivel_mg": nivel_idx,      # 0, 1, 2
+                    "fator_mg": mult,           # 1.0, 1.5, 2.5 <--- GRAVA NO JSON
+                    "perc_banca": perc_banca_usada,
+                    "criterio": criterio_desc,
+                    "data_hora": obter_data_hora_br()
                 }
                 estado["trades_hoje"] += 1
                 salvar_estado(estado)
-                print(f"   💵 Entrada: ${valor:.2f} (Lvl {nivel_idx}) | Motivo: {criterio_desc}")
+                print(f"   💵 Entrada: ${valor:.2f} (Fator {mult}x | {perc_banca_usada}%)")
                 break
             else:
                 status = "GRID" if adx < 25 else ("SNIPER" if adx < 40 else "PERIGO")
@@ -300,9 +263,6 @@ def run_bot():
     salvar_estado(estado)
 
 if __name__ == "__main__":
-    try:
-        run_bot()
-    except Exception as e:
-        print(f"❌ Erro Fatal: {e}")
-        traceback.print_exc()
-        
+    try: run_bot()
+    except: traceback.print_exc()
+            
