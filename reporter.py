@@ -6,10 +6,17 @@ import sys
 import subprocess
 import pytz
 
+# --- AUTO-INSTALAÇÃO ---
+def install(package):
+    try: __import__(package)
+    except: subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
+
+for lib in ["pandas", "openpyxl", "xlsxwriter", "pytz"]: install(lib)
+
 # --- CONFIGURAÇÕES ---
 JSON_FILE = "estado.json"
-CSV_FILE = "historico_trades.csv" # Mantemos para o gráfico de evolução
-EXCEL_FILE = "Relatorio_RoboDerik_V74.xlsx"
+CSV_FILE = "historico_trades.csv" 
+EXCEL_FILE = "Relatorio_RoboDerik_V75.xlsx" # Atualizado para V75
 FUSO_BR = pytz.timezone('America/Sao_Paulo')
 
 def gerar_relatorio():
@@ -21,6 +28,7 @@ def gerar_relatorio():
         data = json.load(f)
 
     # --- 1. ATUALIZAR TIMELINE (GRÁFICO DE EVOLUÇÃO) ---
+    # Mantém o registro histórico da curva de patrimônio
     investido = data.get("posicao_aberta", {}).get("valor_investido", 0) if data.get("posicao_aberta") else 0
     data_hora_br = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
     
@@ -37,7 +45,6 @@ def gerar_relatorio():
     if os.path.exists(CSV_FILE):
         df_timeline = pd.read_csv(CSV_FILE)
         ultima_data = df_timeline.iloc[-1]["Data"] if not df_timeline.empty else ""
-        # Só adiciona se passou pelo menos 1 minuto para evitar spam
         if ultima_data != novo_registro["Data"]:
             df_timeline = pd.concat([df_timeline, pd.DataFrame([novo_registro])], ignore_index=True)
     else:
@@ -51,55 +58,84 @@ def gerar_relatorio():
 
     df_timeline.to_csv(CSV_FILE, index=False)
 
-    # --- 2. GERAR TABELA DE TRADES REAIS (EXTRATO) ---
+    # --- 2. GERAR TABELA DETALHADA DE TRADES (V75) ---
     lista_trades = data.get("historico_trades", [])
-    df_extrato = pd.DataFrame(lista_trades) if lista_trades else pd.DataFrame(columns=["Sem trades ainda"])
+    
+    # Estrutura base caso não tenha trades
+    cols_ordem = ["data", "symbol", "modo", "tipo", "entrada", "tp", "sl", "saida", "lucro_usd", "criterio"]
+    
+    if not lista_trades:
+        df_extrato = pd.DataFrame(columns=cols_ordem)
+    else:
+        df_extrato = pd.DataFrame(lista_trades)
 
-    # --- 3. GERAR EXCEL COM DUAS ABAS ---
+    # Garante que as colunas novas existam (preenche com '-' se faltar)
+    for col in cols_ordem:
+        if col not in df_extrato.columns:
+            df_extrato[col] = "-"
+
+    # Seleciona e Renomeia para Português
+    df_final = df_extrato[cols_ordem].rename(columns={
+        "data": "Data/Hora", 
+        "symbol": "Par", 
+        "modo": "Estratégia", 
+        "tipo": "Operação",
+        "entrada": "Entrada ($)", 
+        "tp": "Alvo (TP)", 
+        "sl": "Stop (SL)",
+        "saida": "Saída ($)", 
+        "lucro_usd": "Lucro Líquido ($)", 
+        "criterio": "Motivo / Indicadores"
+    })
+
+    # --- 3. GERAR O EXCEL ---
     writer = pd.ExcelWriter(EXCEL_FILE, engine='xlsxwriter')
     
-    # Aba 1: Evolução (Gráfico)
+    # Aba 1: Gráfico e Timeline
     df_timeline.to_excel(writer, sheet_name='Evolucao_Banca', index=False)
     
-    # Aba 2: Extrato (Lista de Trades Únicos)
-    df_extrato.to_excel(writer, sheet_name='Extrato_Trades', index=False)
+    # Aba 2: Extrato Detalhado
+    df_final.to_excel(writer, sheet_name='Extrato_Trades', index=False)
 
     workbook = writer.book
     
-    # --- FORMATAÇÃO ABA EVOLUÇÃO ---
-    ws_evolucao = writer.sheets['Evolucao_Banca']
-    formato_money = workbook.add_format({'num_format': '$ #,##0.00'})
-    ws_evolucao.set_column('B:E', 15, formato_money)
-    ws_evolucao.set_column('A:A', 22)
+    # --- FORMATAÇÃO ABA 1 (EVOLUÇÃO) ---
+    ws_evol = writer.sheets['Evolucao_Banca']
+    fmt_money = workbook.add_format({'num_format': '$ #,##0.00'})
+    ws_evol.set_column('B:E', 15, fmt_money)
+    ws_evol.set_column('A:A', 22)
 
-    # Gráfico de Linha
     chart = workbook.add_chart({'type': 'line'})
     chart.add_series({
-        'name': 'Banca',
+        'name': 'Patrimônio Total',
         'categories': ['Evolucao_Banca', 1, 0, len(df_timeline), 0],
         'values':     ['Evolucao_Banca', 1, 1, len(df_timeline), 1],
-        'line':       {'color': 'blue', 'width': 2}
+        'line':       {'color': 'blue', 'width': 2.5}
     })
-    ws_evolucao.insert_chart('H2', chart)
+    chart.set_title({'name': 'Crescimento da Banca (Juros Compostos)'})
+    ws_evol.insert_chart('H2', chart)
 
-    # --- FORMATAÇÃO ABA EXTRATO ---
-    ws_extrato = writer.sheets['Extrato_Trades']
-    ws_extrato.set_column('A:Z', 18) # Ajusta largura
+    # --- FORMATAÇÃO ABA 2 (EXTRATO) ---
+    ws_ext = writer.sheets['Extrato_Trades']
+    fmt_num = workbook.add_format({'num_format': '#,##0.00'})
     
-    # Formatação Condicional (Verde/Vermelho) no Lucro
-    if not df_extrato.empty and "lucro_usd" in df_extrato.columns:
-        col_idx = df_extrato.columns.get_loc("lucro_usd")
-        letra_col = chr(65 + col_idx) # Converte índice 0->A, 1->B...
-        formato_verde = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
-        formato_vermelho = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-        
-        ws_extrato.conditional_format(f'{letra_col}2:{letra_col}1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': formato_verde})
-        ws_extrato.conditional_format(f'{letra_col}2:{letra_col}1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': formato_vermelho})
+    # Larguras
+    ws_ext.set_column('A:A', 20) # Data
+    ws_ext.set_column('B:D', 12) # Par/Modo/Tipo
+    ws_ext.set_column('E:H', 15, fmt_num) # Preços (Entrada/TP/SL/Saída)
+    ws_ext.set_column('I:I', 18, fmt_money) # Lucro
+    ws_ext.set_column('J:J', 45) # Motivo (Bem largo para ler o texto)
+
+    # Cores no Lucro (Verde/Vermelho)
+    fmt_green = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+    fmt_red = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+    
+    # Aplica formatação condicional na coluna I (Lucro)
+    ws_ext.conditional_format('I2:I1000', {'type': 'cell', 'criteria': '>', 'value': 0, 'format': fmt_green})
+    ws_ext.conditional_format('I2:I1000', {'type': 'cell', 'criteria': '<', 'value': 0, 'format': fmt_red})
 
     writer.close()
-    print(f"📊 Relatório V74 Gerado: {EXCEL_FILE}")
-    print("👉 Aba 1: Gráfico de Crescimento")
-    print("👉 Aba 2: Lista Real de Trades (Sem duplicatas)")
+    print(f"📊 Relatório V75 Completo: {EXCEL_FILE}")
 
 if __name__ == "__main__":
     gerar_relatorio()
