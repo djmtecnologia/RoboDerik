@@ -1,25 +1,12 @@
 {
-    "banca_atual": 55.117485351104534,
+    "banca_atual": 55.056914719844116,
     "pico_banca": 60.16559364929601,
-    "martingale_idx": 0,
+    "martingale_idx": 1,
     "trades_hoje": 3,
     "data_hoje": "16/02/2026",
-    "pnl_hoje": -2.740559607213335,
+    "pnl_hoje": -2.8011302384737555,
     "em_quarentena": false,
-    "posicao_aberta": {
-        "symbol": "ADA-USD",
-        "tipo": "sell",
-        "modo": "GRID",
-        "entrada": 0.28419825434684753,
-        "tp": 0.2813562718033791,
-        "sl": 0.2864718403816223,
-        "valor_investido": 2.2046994140441813,
-        "nivel_mg": 0,
-        "fator_mg": 1.0,
-        "perc_banca": 4.0,
-        "criterio": "ADX 9.3 | RSI 58.1 > 55",
-        "data_hora": "16/02/2026 17:53:52"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
@@ -142,6 +129,24 @@
             "resultado": "\u2705 TAKE PROFIT",
             "lucro_usd": 0.27,
             "saldo_pos_trade": 55.12
+        },
+        {
+            "data": "16/02/2026 19:02:52",
+            "symbol": "ADA-USD",
+            "modo": "GRID",
+            "tipo": "SELL",
+            "nivel_mg": 0,
+            "fator_mg": 1.0,
+            "investido": 2.2,
+            "perc_banca": 4.0,
+            "entrada": 0.28419825434684753,
+            "saida": 0.28682494163513184,
+            "tp": 0.2813562718033791,
+            "sl": 0.2864718403816223,
+            "criterio": "ADX 9.3 | RSI 58.1 > 55",
+            "resultado": "\ud83d\udd3b STOP LOSS",
+            "lucro_usd": -0.06,
+            "saldo_pos_trade": 55.06
         }
     ],
     "banca_inicial": 60.0,
