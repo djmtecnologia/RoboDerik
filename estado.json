@@ -2,9 +2,9 @@
     "banca_atual": 57.85804495831787,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 3,
-    "trades_hoje": 5,
-    "data_hoje": "15/02/2026",
-    "pnl_hoje": -2.141955041682132,
+    "trades_hoje": 0,
+    "data_hoje": "16/02/2026",
+    "pnl_hoje": 0.0,
     "em_quarentena": false,
     "posicao_aberta": {
         "symbol": "SOL-USD",
