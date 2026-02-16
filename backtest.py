@@ -21,8 +21,8 @@ import numpy as np
 
 # --- CONFIGURAÇÕES V70 (HYBRID FUSION) ---
 BANCA_INICIAL = 60.00
-DATA_INICIAL = "2017-01-01"
-DATA_FINAL   = "2026-02-14"
+DATA_INICIAL = "2025-01-01"
+DATA_FINAL   = "2026-02-15"
 
 # GESTÃO DE RISCO HÍBRIDA
 # Mão Base varia conforme o modo (Grid usa menos, Sniper usa mais)
