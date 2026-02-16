@@ -1,25 +1,12 @@
 {
-    "banca_atual": 57.85804495831787,
+    "banca_atual": 55.24916784636871,
     "pico_banca": 60.16559364929601,
-    "martingale_idx": 3,
+    "martingale_idx": 4,
     "trades_hoje": 0,
     "data_hoje": "16/02/2026",
-    "pnl_hoje": 0.0,
+    "pnl_hoje": -2.6088771119491616,
     "em_quarentena": false,
-    "posicao_aberta": {
-        "symbol": "SOL-USD",
-        "tipo": "buy",
-        "modo": "SNIPER",
-        "entrada": 85.61427307128906,
-        "tp": 87.75462989807129,
-        "sl": 84.33005897521973,
-        "valor_investido": 54.96514271040197,
-        "nivel_mg": 3,
-        "fator_mg": 10.5,
-        "perc_banca": 95.0,
-        "criterio": "ADX 36.4 | RSI 26.9 < 28",
-        "data_hora": "15/02/2026 16:12:54"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
@@ -88,6 +75,24 @@
             "resultado": "\ud83d\udd3b STOP LOSS",
             "lucro_usd": -1.49,
             "saldo_pos_trade": 57.86
+        },
+        {
+            "data": "16/02/2026 10:54:52",
+            "symbol": "SOL-USD",
+            "modo": "SNIPER",
+            "tipo": "BUY",
+            "nivel_mg": 3,
+            "fator_mg": 10.5,
+            "investido": 54.97,
+            "perc_banca": 95.0,
+            "entrada": 85.61427307128906,
+            "saida": 84.25973510742188,
+            "tp": 87.75462989807129,
+            "sl": 84.33005897521973,
+            "criterio": "ADX 36.4 | RSI 26.9 < 28",
+            "resultado": "\ud83d\udd3b STOP LOSS",
+            "lucro_usd": -2.61,
+            "saldo_pos_trade": 55.25
         }
     ],
     "banca_inicial": 60.0,
