@@ -2,11 +2,24 @@
     "banca_atual": 55.176203880228506,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 0,
-    "trades_hoje": 3,
+    "trades_hoje": 4,
     "data_hoje": "17/02/2026",
     "pnl_hoje": 0.20427789871362353,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ADA-USD",
+        "tipo": "sell",
+        "modo": "GRID",
+        "entrada": 0.2847498953342438,
+        "tp": 0.2819023963809013,
+        "sl": 0.28702789449691773,
+        "valor_investido": 2.20704815520914,
+        "nivel_mg": 0,
+        "fator_mg": 1.0,
+        "perc_banca": 4.0,
+        "criterio": "ADX 21.5 | RSI 60.6 > 55",
+        "data_hora": "17/02/2026 13:10:57"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
