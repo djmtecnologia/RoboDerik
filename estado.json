@@ -2,9 +2,9 @@
     "banca_atual": 54.97192598151488,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 2,
-    "trades_hoje": 5,
-    "data_hoje": "16/02/2026",
-    "pnl_hoje": -2.8861189768029933,
+    "trades_hoje": 0,
+    "data_hoje": "17/02/2026",
+    "pnl_hoje": 0.0,
     "em_quarentena": false,
     "posicao_aberta": {
         "symbol": "BTC-USD",
