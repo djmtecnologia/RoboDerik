@@ -2,11 +2,24 @@
     "banca_atual": 55.09174767465354,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 1,
-    "trades_hoje": 1,
+    "trades_hoje": 2,
     "data_hoje": "17/02/2026",
     "pnl_hoje": 0.11982169313865898,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "tipo": "buy",
+        "modo": "GRID",
+        "entrada": 84.9343032836914,
+        "tp": 85.78364631652832,
+        "sl": 84.25482885742187,
+        "valor_investido": 3.3055048604792128,
+        "nivel_mg": 1,
+        "fator_mg": 1.5,
+        "perc_banca": 6.0,
+        "criterio": "ADX 23.5 | RSI 30.3 < 45",
+        "data_hora": "17/02/2026 07:55:50"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
