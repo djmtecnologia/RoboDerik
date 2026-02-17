@@ -1,25 +1,12 @@
 {
-    "banca_atual": 55.01045147239807,
+    "banca_atual": 55.176203880228506,
     "pico_banca": 60.16559364929601,
-    "martingale_idx": 2,
+    "martingale_idx": 0,
     "trades_hoje": 3,
     "data_hoje": "17/02/2026",
-    "pnl_hoje": 0.03852549088318308,
+    "pnl_hoje": 0.20427789871362353,
     "em_quarentena": false,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "tipo": "buy",
-        "modo": "GRID",
-        "entrada": 67135.578125,
-        "tp": 67806.93390625001,
-        "sl": 66598.4935,
-        "valor_investido": 5.501045147239807,
-        "nivel_mg": 2,
-        "fator_mg": 2.5,
-        "perc_banca": 10.0,
-        "criterio": "ADX 21.4 | RSI 29.0 < 45",
-        "data_hora": "17/02/2026 11:46:57"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
@@ -232,6 +219,24 @@
             "resultado": "\ud83d\udd3b STOP LOSS",
             "lucro_usd": -0.08,
             "saldo_pos_trade": 55.01
+        },
+        {
+            "data": "17/02/2026 13:08:51",
+            "symbol": "BTC-USD",
+            "modo": "GRID",
+            "tipo": "BUY",
+            "nivel_mg": 2,
+            "fator_mg": 2.5,
+            "investido": 5.5,
+            "perc_banca": 10.0,
+            "entrada": 67135.578125,
+            "saida": 67809.8671875,
+            "tp": 67806.93390625001,
+            "sl": 66598.4935,
+            "criterio": "ADX 21.4 | RSI 29.0 < 45",
+            "resultado": "\u2705 TAKE PROFIT",
+            "lucro_usd": 0.17,
+            "saldo_pos_trade": 55.18
         }
     ],
     "banca_inicial": 60.0,
