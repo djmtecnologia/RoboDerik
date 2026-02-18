@@ -2,11 +2,24 @@
     "banca_atual": 55.32669369711063,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 0,
-    "trades_hoje": 0,
+    "trades_hoje": 1,
     "data_hoje": "18/02/2026",
     "pnl_hoje": 0.06831032999533766,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BNB-USD",
+        "tipo": "buy",
+        "modo": "GRID",
+        "entrada": 614.979736328125,
+        "tp": 621.1295336914062,
+        "sl": 610.0598984375,
+        "valor_investido": 2.213067747884425,
+        "nivel_mg": 0,
+        "fator_mg": 1.0,
+        "perc_banca": 4.0,
+        "criterio": "ADX 10.6 | RSI 38.6 < 45",
+        "data_hora": "18/02/2026 04:28:53"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
