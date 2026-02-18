@@ -1,0 +1,19 @@
+{
+    "banca_atual": 60.0,
+    "pico_banca": 60.0,
+    "posicao_aberta": {
+        "symbol": "BNB-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "entry": 604.794189453125,
+        "sl": 607.2562288784497,
+        "size_usd": 9.0,
+        "initial_size_usd": 9.0,
+        "adds": 0,
+        "data": "18/02/2026 20:58:52"
+    },
+    "historico_trades": [],
+    "data_hoje": "18/02/2026",
+    "pnl_hoje": 0.0
+}
