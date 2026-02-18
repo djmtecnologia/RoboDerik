@@ -68,15 +68,16 @@ def carregar_estado():
                 carregado = json.load(f)
                 padrao.update(carregado)
         except Exception as e:
-            print(f"⚠️ Resetando estado: {e}")
+            print(f"⚠️ Erro ao ler arquivo, usando padrão: {e}")
     return padrao
 
 def salvar_estado(estado):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(estado, f, indent=4)
+        # print(f"💾 Estado salvo em {STATE_FILE}") 
     except Exception as e:
-        print(f"❌ Erro ao salvar: {e}")
+        print(f"❌ ERRO CRÍTICO AO SALVAR ARQUIVO: {e}")
 
 def obter_dados_v164(symbol):
     try:
@@ -84,7 +85,7 @@ def obter_dados_v164(symbol):
         df = yf.download(symbol, period="60d", interval=TIMEFRAME, progress=False)
         
         if df.empty or len(df) < 805: 
-            # print(f"⚠️ Dados insuficientes para {symbol} (Need 800+ candles)")
+            print(f"⚠️ {symbol}: Dados insuficientes ou erro de conexão.")
             return None
         
         if isinstance(df.columns, pd.MultiIndex): 
@@ -112,7 +113,7 @@ def obter_dados_v164(symbol):
 
         return df.iloc[-1]
     except Exception as e:
-        # print(f"Erro dados {symbol}: {e}")
+        print(f"❌ Erro ao baixar dados de {symbol}: {e}")
         return None
 
 def run_bot():
@@ -120,6 +121,13 @@ def run_bot():
     print(f"\n🧬 ROBODERIK V164 (ASYMMETRIC COMPOUNDER) - {hora_atual}")
     
     estado = carregar_estado()
+    
+    # --- CORREÇÃO: FORÇA A CRIAÇÃO DO ARQUIVO AGORA SE NÃO EXISTIR ---
+    if not os.path.exists(STATE_FILE):
+        print(f"📁 Criando novo arquivo de estado: {STATE_FILE}")
+        salvar_estado(estado)
+    # ----------------------------------------------------------------
+    
     print(f"💰 Banca: ${estado['banca_atual']:.2f} | PnL Hoje: ${estado['pnl_hoje']:.2f}")
 
     # Reinicia PnL diário
@@ -127,6 +135,7 @@ def run_bot():
     if estado["data_hoje"] != hoje:
         estado["data_hoje"] = hoje
         estado["pnl_hoje"] = 0.0
+        salvar_estado(estado)
 
     # --- 1. GESTÃO DA POSIÇÃO ABERTA ---
     if estado["posicao_aberta"]:
@@ -139,7 +148,6 @@ def run_bot():
             ema20 = float(dados['ema20'])
             ema50 = float(dados['ema50'])
             atr = float(dados['atr'])
-            adx = float(dados['adx'])
             
             lucro_usd = 0
             fechou = False
@@ -168,7 +176,7 @@ def run_bot():
                         fechou = True; motivo = "TP Fast (EMA20)"
             
             elif pos['strat'] == 'TRAP':
-                # Trap sai na Média Rápida
+                # Trap sai na Média Rápida (EMA50 usada como alvo médio aqui no real time)
                 target = ema50
                 if pos['side'] == 'buy' and dados['high'] >= target:
                     fechou = True; motivo = "TP Trap"
@@ -332,5 +340,6 @@ if __name__ == "__main__":
     try:
         run_bot()
     except Exception as e:
+        print(f"Erro fatal: {e}")
         traceback.print_exc()
-        
+                
