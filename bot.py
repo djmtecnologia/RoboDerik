@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 import traceback
 
-# --- AUTO-INSTALAÇÃO DE DEPENDÊNCIAS ---
+# --- AUTO-INSTALAÇÃO ---
 def install(package):
     try:
         __import__(package)
@@ -23,7 +23,7 @@ import pandas_ta as ta
 import numpy as np
 import pytz
 
-# --- CONFIGURAÇÕES DE FUSO E DATA ---
+# --- CONFIGURAÇÕES DE AMBIENTE ---
 FUSO_BR = pytz.timezone('America/Sao_Paulo')
 
 def obter_data_hora_br():
@@ -32,97 +32,84 @@ def obter_data_hora_br():
 def obter_data_hoje_br():
     return datetime.now(FUSO_BR).strftime("%d/%m/%Y")
 
-# --- CONFIGURAÇÕES V80 (AUDITORIA DETALHADA MARTINGALE) ---
+# --- 💎 CONFIGURAÇÕES V164 (ASYMMETRIC COMPOUNDER) ---
 SYMBOL_MAP = {
     "BTC-USD": "Bitcoin", 
     "ETH-USD": "Ethereum", 
     "SOL-USD": "Solana",
-    "BNB-USD": "Binance Coin", 
-    "XRP-USD": "XRP", 
+    "BNB-USD": "Binance Coin",
     "ADA-USD": "Cardano"
 }
-TIMEFRAME = "15m"
-ALAVANCAGEM = 3
 
-# GESTÃO DE RISCO
-PERC_MAO_GRID = 0.04    # 4% da banca em mercados laterais
-PERC_MAO_SNIPER = 0.10  # 10% da banca em tendências claras
+# V164 roda melhor em 4H, mas para teste rápido em bot usamos 1H ou 15m.
+# Se usar 15m, a EMA 800 representa ~8 dias de tendência.
+TIMEFRAME = "15m" 
+ALAVANCAGEM = 1 # Spot ou ajuste na exchange (O bot calcula o lote)
 
-# MARTINGALE ADAPTATIVO (FATORES DE MULTIPLICAÇÃO)
-# Nível 0 = 1.0x, Nível 1 = 1.5x, etc.
-NIVEIS_GRID = [1.0, 1.5, 2.5, 4.0]
-NIVEIS_SNIPER = [1.0, 2.5, 5.5, 10.5]
+# RISK MANAGEMENT V164
+RISK_SUMMER = 0.06    # 6% da banca em Tendência de Alta Limpa
+RISK_WINTER = 0.02    # 2% da banca em Mercado de Baixa (Defesa)
+MAX_ADDS = 1          # Máximo de 1 piramidagem (Dobra a mão 1 vez)
 
-# ALVOS (Take Profit / Stop Loss)
-TP_GRID = 0.010; SL_GRID = 0.008
-TP_SNIPER = 0.025; SL_SNIPER = 0.015
-
-# SEGURANÇA
-STOP_LOSS_DIARIO_PERC = 0.20  # Para se perder 20% da banca no dia
-STOP_DRAWDOWN_GLOBAL = 0.25   # Quarentena se cair 25% do topo histórico
-MAX_TRADES_DIA = 12
-
-STATE_FILE = "estado.json"
+STATE_FILE = "estado_v164.json"
 
 def carregar_estado():
     padrao = {
         "banca_atual": 60.0,
         "pico_banca": 60.0,
-        "martingale_idx": 0,
-        "trades_hoje": 0,
-        "data_hoje": obter_data_hoje_br(),
-        "pnl_hoje": 0.0,
-        "em_quarentena": False,
         "posicao_aberta": None,
-        "historico_trades": []
+        "historico_trades": [],
+        "data_hoje": obter_data_hoje_br(),
+        "pnl_hoje": 0.0
     }
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
                 carregado = json.load(f)
                 padrao.update(carregado)
-                if "historico_trades" not in padrao: padrao["historico_trades"] = []
         except Exception as e:
-            print(f"⚠️ Erro ao carregar estado: {e}. Usando padrão.")
+            print(f"⚠️ Resetando estado: {e}")
     return padrao
 
 def salvar_estado(estado):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(estado, f, indent=4)
-        # print(f"💾 [{obter_data_hora_br()}] Estado salvo.") # Comentei para limpar o log
     except Exception as e:
         print(f"❌ Erro ao salvar: {e}")
 
-def obter_dados_yfinance(symbol):
+def obter_dados_v164(symbol):
     try:
-        # Baixa dados (progress=False remove a barra de carregamento)
-        df = yf.download(symbol, period="5d", interval=TIMEFRAME, progress=False)
+        # Precisa de bastante histórico para a EMA 800
+        df = yf.download(symbol, period="60d", interval=TIMEFRAME, progress=False)
         
-        if df.empty: return None
+        if df.empty or len(df) < 805: 
+            # print(f"⚠️ Dados insuficientes para {symbol} (Need 800+ candles)")
+            return None
         
-        # Tratamento para novas versões do YFinance (MultiIndex)
         if isinstance(df.columns, pd.MultiIndex): 
             df.columns = df.columns.get_level_values(0)
-            
-        # Renomear para minúsculo para padronizar
+        
         df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
         df.columns = [c.lower() for c in df.columns]
-        
-        if len(df) < 30: return None
 
-        # Indicadores
+        # --- INDICADORES V164 ---
+        # Médias Móveis
+        df['ema20'] = ta.ema(df['close'], length=20)
+        df['ema50'] = ta.ema(df['close'], length=50)   # Exit Lento
+        df['ema200'] = ta.ema(df['close'], length=200) # Trend Filter
+        df['ema800'] = ta.ema(df['close'], length=800) # THE SHIELD (Macro)
+
+        # Volatilidade e Força
+        df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
-        df['rsi'] = ta.rsi(df['close'], length=14)
-        df['vol_ma'] = ta.sma(df['volume'], length=20)
-        
+
+        # Bollinger (Para Trap)
         bb = ta.bbands(df['close'], length=20, std=2)
         if bb is not None:
-            df['lower'] = bb.iloc[:, 0]
-            df['upper'] = bb.iloc[:, 2]
-        else: 
-            return None
-            
+            df['bb_l'] = bb.iloc[:, 0]
+            df['bb_u'] = bb.iloc[:, 2]
+
         return df.iloc[-1]
     except Exception as e:
         # print(f"Erro dados {symbol}: {e}")
@@ -130,187 +117,220 @@ def obter_dados_yfinance(symbol):
 
 def run_bot():
     hora_atual = obter_data_hora_br()
-    print(f"🚀 ROBODERIK V80 (MARTINGALE FACTOR) - {hora_atual} (BR)")
+    print(f"\n🧬 ROBODERIK V164 (ASYMMETRIC COMPOUNDER) - {hora_atual}")
     
     estado = carregar_estado()
-    trades_totais = len(estado.get("historico_trades", []))
-    print(f"💰 Banca: ${estado['banca_atual']:.2f} | PnL Hoje: ${estado['pnl_hoje']:.2f} | Histórico: {trades_totais} trades")
-    print(f"🔥 Nível Martingale Atual: {estado['martingale_idx']}")
+    print(f"💰 Banca: ${estado['banca_atual']:.2f} | PnL Hoje: ${estado['pnl_hoje']:.2f}")
 
-    # Verifica virada do dia
-    hoje_br = obter_data_hoje_br()
-    if estado["data_hoje"] != hoje_br:
-        estado["data_hoje"] = hoje_br
-        estado["trades_hoje"] = 0
+    # Reinicia PnL diário
+    hoje = obter_data_hoje_br()
+    if estado["data_hoje"] != hoje:
+        estado["data_hoje"] = hoje
         estado["pnl_hoje"] = 0.0
-        print(f"📅 Novo dia iniciado: {hoje_br}")
 
-    # --- 1. MONITORAMENTO DE POSIÇÃO ABERTA ---
+    # --- 1. GESTÃO DA POSIÇÃO ABERTA ---
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
-        print(f"👀 Acompanhando {symbol} ({pos['modo']})... Entrada: {pos['entrada']:.4f}")
+        dados = obter_dados_v164(symbol)
         
-        dados = obter_dados_yfinance(symbol)
         if dados is not None:
             atual = float(dados['close'])
-            lucro = 0; fechou = False; motivo = ""
+            ema20 = float(dados['ema20'])
+            ema50 = float(dados['ema50'])
+            atr = float(dados['atr'])
+            adx = float(dados['adx'])
+            
+            lucro_usd = 0
+            fechou = False
+            motivo = ""
+            
+            # Cálculo de Lucro Atual (Não realizado)
+            if pos['side'] == 'buy':
+                lucro_unrealized_pct = (atual - pos['entry']) / pos['entry']
+            else:
+                lucro_unrealized_pct = (pos['entry'] - atual) / pos['entry']
 
-            # Cálculo de PnL (Long ou Short)
-            if pos["tipo"] == "buy":
-                if atual >= pos["tp"]:
-                    lucro = (pos["valor_investido"] * ALAVANCAGEM * ((atual/pos["entrada"])-1))
-                    fechou = True; motivo = "✅ TAKE PROFIT"
-                elif atual <= pos["sl"]:
-                    lucro = (pos["valor_investido"] * ALAVANCAGEM * ((atual/pos["entrada"])-1))
-                    fechou = True; motivo = "🔻 STOP LOSS"
-            else: # sell
-                if atual <= pos["tp"]:
-                    lucro = (pos["valor_investido"] * ALAVANCAGEM * ((pos["entrada"]/atual)-1))
-                    fechou = True; motivo = "✅ TAKE PROFIT"
-                elif atual >= pos["sl"]:
-                    lucro = (pos["valor_investido"] * ALAVANCAGEM * ((pos["entrada"]/atual)-1))
-                    fechou = True; motivo = "🔻 STOP LOSS"
+            print(f"👀 {symbol} ({pos['strat']}) | PnL: {lucro_unrealized_pct*100:.2f}% | Adds: {pos['adds']}")
 
-            if fechou:
-                estado["banca_atual"] += lucro
-                estado["pnl_hoje"] += lucro
+            # --- A. SAÍDAS ASSIMÉTRICAS ---
+            if pos['strat'] == 'TREND':
+                # Se estamos no SUMMER (Macro Bull), usamos EMA 50 (Exit Lento)
+                if pos['side'] == 'buy' and pos['macro'] == "SUMMER":
+                    if atual < ema50:
+                        fechou = True; motivo = "TP Deep Trend (EMA50)"
                 
-                # --- REGISTRO COMPLETO V80 ---
-                novo_trade = {
+                # Se for Winter ou Short, usa EMA 20 (Exit Rápido)
+                else:
+                    if pos['side'] == 'buy' and atual < ema20:
+                        fechou = True; motivo = "TP Fast (EMA20)"
+                    elif pos['side'] == 'sell' and atual > ema20:
+                        fechou = True; motivo = "TP Fast (EMA20)"
+            
+            elif pos['strat'] == 'TRAP':
+                # Trap sai na Média Rápida
+                target = ema50
+                if pos['side'] == 'buy' and dados['high'] >= target:
+                    fechou = True; motivo = "TP Trap"
+                elif pos['side'] == 'sell' and dados['low'] <= target:
+                    fechou = True; motivo = "TP Trap"
+
+            # --- B. STOP LOSS TÉCNICO ---
+            if not fechou:
+                if pos['side'] == 'buy' and atual <= pos['sl']:
+                    fechou = True; motivo = "⛔ STOP LOSS"
+                elif pos['side'] == 'sell' and atual >= pos['sl']:
+                    fechou = True; motivo = "⛔ STOP LOSS"
+
+            # --- C. PIRAMIDAGEM (GOLDEN ADD) ---
+            # Só adiciona se: Trend + Summer + Lucro > 5% + Não adicionou ainda
+            if not fechou and pos['strat'] == 'TREND' and pos['macro'] == "SUMMER" and pos['adds'] < MAX_ADDS:
+                if pos['side'] == 'buy' and lucro_unrealized_pct > 0.05:
+                    
+                    add_usd = pos['initial_size_usd'] # Dobra a mão
+                    if estado['banca_atual'] > add_usd:
+                        # Preço Médio Novo
+                        total_size = pos['size_usd'] + add_usd
+                        new_entry = ((pos['size_usd'] * pos['entry']) + (add_usd * atual)) / total_size
+                        
+                        pos['size_usd'] = total_size
+                        pos['entry'] = new_entry
+                        pos['adds'] += 1
+                        
+                        # Stop Loss sobe, mas mantém técnico (ATR)
+                        pos['sl'] = new_entry - (atr * 2.0)
+                        
+                        print(f"🔥 PIRAMIDAGEM EXECUTADA EM {symbol}! Novo PM: {new_entry:.2f}")
+                        salvar_estado(estado)
+
+            # --- D. FECHAMENTO ---
+            if fechou:
+                # Calcula Lucro Real em USD
+                if pos['side'] == 'buy':
+                    pnl_final = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
+                else:
+                    pnl_final = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
+                
+                estado['banca_atual'] += pnl_final
+                estado['pnl_hoje'] += pnl_final
+                
+                # Log
+                trade_log = {
                     "data": obter_data_hora_br(),
                     "symbol": symbol,
-                    "modo": pos['modo'],
-                    "tipo": pos['tipo'].upper(),
-                    "nivel_mg": pos.get('nivel_mg', 0),    # Nivel (0, 1, 2)
-                    "fator_mg": pos.get('fator_mg', 1.0),  # Fator (1.0x, 1.5x)
-                    "investido": round(pos['valor_investido'], 2),
-                    "perc_banca": pos.get('perc_banca', 0.0),
-                    "entrada": pos['entrada'],
-                    "saida": atual,
-                    "criterio": pos.get("criterio", "N/A"),
-                    "resultado": motivo,
-                    "lucro_usd": round(lucro, 2),
-                    "saldo_pos_trade": round(estado["banca_atual"], 2)
+                    "strat": pos['strat'],
+                    "side": pos['side'],
+                    "lucro": round(pnl_final, 2),
+                    "motivo": motivo,
+                    "adds": pos['adds']
                 }
+                estado['historico_trades'].append(trade_log)
+                estado['posicao_aberta'] = None
                 
-                estado["historico_trades"].append(novo_trade)
-                # Mantém apenas os últimos 100 trades no JSON para não ficar gigante
-                if len(estado["historico_trades"]) > 100: 
-                    estado["historico_trades"].pop(0)
-
-                estado["posicao_aberta"] = None
-                print(f"{motivo} | PnL: ${lucro:.2f} | Fator MG: {novo_trade['fator_mg']}x")
+                if estado['banca_atual'] > estado['pico_banca']:
+                    estado['pico_banca'] = estado['banca_atual']
                 
-                # Lógica Martingale: Reset se ganhar, +1 se perder
-                if lucro > 0:
-                    estado["martingale_idx"] = 0
-                    # Sai da quarentena se recuperar 90% do topo
-                    if estado["em_quarentena"] and estado["banca_atual"] > estado["pico_banca"] * 0.90:
-                        estado["em_quarentena"] = False
-                else:
-                    estado["martingale_idx"] += 1
-                
-                # Atualiza pico histórico da banca
-                if estado["banca_atual"] > estado["pico_banca"]: 
-                    estado["pico_banca"] = estado["banca_atual"]
-                
+                print(f"✨ TRADE FECHADO: {motivo} | PnL: ${pnl_final:.2f}")
                 salvar_estado(estado)
                 return
 
-    # --- 2. TRAVAS DE SEGURANÇA ---
-    drawdown = (estado["pico_banca"] - estado["banca_atual"]) / estado["pico_banca"]
-    if drawdown >= STOP_DRAWDOWN_GLOBAL:
-        estado["em_quarentena"] = True
-        print(f"🛑 Quarentena Global Ativada (DD {drawdown*100:.1f}%)")
-
-    if estado["pnl_hoje"] <= -(estado["banca_atual"] * STOP_LOSS_DIARIO_PERC):
-        print("🛑 Stop Loss Diário atingido. O bot vai descansar até amanhã.")
-        return
-
-    if estado["trades_hoje"] >= MAX_TRADES_DIA:
-        print("⏸️ Limite de trades diários atingido.")
-        return
-
-    # --- 3. ESCANEAMENTO DE OPORTUNIDADES ---
+    # --- 2. ESCANEAMENTO (SÓ SE NÃO TIVER POSIÇÃO) ---
     if estado["posicao_aberta"] is None:
-        print(f"🔎 Escaneando mercado...")
+        print(f"🔎 Escaneando V164...")
         for symbol, nome in SYMBOL_MAP.items():
-            row = obter_dados_yfinance(symbol)
+            row = obter_dados_v164(symbol)
             if row is None: continue
 
-            adx = row['adx']; rsi = row['rsi']; close = row['close']
-            lower = row['lower']; upper = row['upper']
-            volume = row['volume']; vol_ma = row['vol_ma']
+            # Indicadores
+            close = float(row['close'])
+            ema20 = float(row['ema20'])
+            ema200 = float(row['ema200'])
+            ema800 = float(row['ema800'])
+            adx = float(row['adx'])
+            atr = float(row['atr'])
             
-            signal = None; modo = ""; tp_pct = 0; sl_pct = 0
-            mao_base = 0; niveis = []
-            criterio_desc = ""
+            # V164 INTELLIGENCE LAYER
+            macro = "SUMMER" if close > ema800 else "WINTER"
+            bias = "BULL" if close > ema200 else "BEAR"
+            
+            signal = None; side = ""; strat = ""; risk_profile = RISK_WINTER
 
-            # ESTRATÉGIA 1: GRID (Mercado Lateral / ADX Baixo)
-            if adx < 25:
-                if (close < lower and rsi < 45): 
-                    signal = 'buy'; criterio_desc = f"GRID: ADX {adx:.1f} | RSI {rsi:.1f} < 45 | Low BB"
-                elif (close > upper and rsi > 55): 
-                    signal = 'sell'; criterio_desc = f"GRID: ADX {adx:.1f} | RSI {rsi:.1f} > 55 | High BB"
+            # ESTRATÉGIA 1: TREND (ADX > 20)
+            if adx > 20:
+                if macro == "SUMMER":
+                    if close > ema20:
+                        signal = True; side = "buy"; strat = "TREND"
+                        risk_profile = RISK_SUMMER # 6% (Ataque)
                 
-                if signal:
-                    modo = "GRID"; tp_pct = TP_GRID; sl_pct = SL_GRID
-                    mao_base = estado["banca_atual"] * PERC_MAO_GRID; niveis = NIVEIS_GRID
+                # Proteção V164: No Winter (Bear Market), PROIBIDO LONG DE TENDÊNCIA
+                elif macro == "WINTER":
+                    if close < ema20:
+                        signal = True; side = "sell"; strat = "TREND"
+                        risk_profile = RISK_WINTER # 2% (Defesa)
 
-            # ESTRATÉGIA 2: SNIPER (Tendência / ADX Médio + Volume)
-            elif 25 <= adx < 40 and volume > vol_ma:
-                if (rsi < 28 and close < lower): 
-                    signal = 'buy'; criterio_desc = f"SNIPER: ADX {adx:.1f} | RSI {rsi:.1f} < 28 | Vol High"
-                elif (rsi > 72 and close > upper): 
-                    signal = 'sell'; criterio_desc = f"SNIPER: ADX {adx:.1f} | RSI {rsi:.1f} > 72 | Vol High"
-                
-                if signal:
-                    modo = "SNIPER"; tp_pct = TP_SNIPER; sl_pct = SL_SNIPER
-                    mao_base = estado["banca_atual"] * PERC_MAO_SNIPER; niveis = NIVEIS_SNIPER
+            # ESTRATÉGIA 2: TRAP (ADX < 30)
+            if not signal and adx < 30:
+                if bias == "BULL" and float(row['low']) <= float(row['bb_l']):
+                    # Wicks longos
+                    body = abs(float(row['open']) - close)
+                    wick = min(float(row['open']), close) - float(row['low'])
+                    if wick > body: # Martelo/Rejeição
+                        signal = True; side = "buy"; strat = "TRAP"
+                        risk_profile = RISK_WINTER
 
-            # EXECUÇÃO DA ENTRADA
+                elif bias == "BEAR" and macro == "WINTER": # Trap de topo só no inverno
+                    if float(row['high']) >= float(row['bb_u']):
+                        signal = True; side = "sell"; strat = "TRAP"
+                        risk_profile = RISK_WINTER
+
             if signal:
-                print(f"🚀 SINAL ENCONTRADO: {signal.upper()} em {nome} ({modo})")
+                print(f"🚀 SINAL V164: {side.upper()} {symbol} ({strat} - {macro})")
                 
-                # Cálculo do Martingale
-                nivel_idx = min(estado["martingale_idx"], len(niveis)-1)
-                mult = niveis[nivel_idx] # Fator de multiplicação
-                valor = mao_base * mult
+                # Position Sizing
+                risk_usd = estado['banca_atual'] * risk_profile
+                sl_dist = atr * 2.0
                 
-                # Trava de segurança para não usar 100% da banca num hit kill
-                if valor > estado["banca_atual"] * 0.95: 
-                    valor = estado["banca_atual"] * 0.95
+                if side == "buy":
+                    sl_price = close - sl_dist
+                else:
+                    sl_price = close + sl_dist
                 
-                price = float(close)
-                tp = price * (1 + tp_pct) if signal == 'buy' else price * (1 - tp_pct)
-                sl = price * (1 - sl_pct) if signal == 'buy' else price * (1 + sl_pct)
-                
-                perc_banca_usada = round((valor / estado["banca_atual"]) * 100, 2)
+                # Evita divisão por zero
+                dist_abs = abs(close - sl_price)
+                if dist_abs == 0: continue
 
-                estado["posicao_aberta"] = {
-                    "symbol": symbol, "tipo": signal, "modo": modo,
-                    "entrada": price, "tp": tp, "sl": sl, 
-                    "valor_investido": valor,
-                    "nivel_mg": nivel_idx,      
-                    "fator_mg": mult,           
-                    "perc_banca": perc_banca_usada,
-                    "criterio": criterio_desc,
-                    "data_hora": obter_data_hora_br()
+                # Tamanho da posição baseado no risco do Stop Loss
+                pos_size_usd = risk_usd / (dist_abs / close)
+                
+                # Trava de segurança (Max 30% da banca no Summer, 15% no Winter)
+                max_alloc = 0.30 if (macro == "SUMMER" and strat == "TREND") else 0.15
+                if pos_size_usd > estado['banca_atual'] * max_alloc:
+                    pos_size_usd = estado['banca_atual'] * max_alloc
+
+                estado['posicao_aberta'] = {
+                    "symbol": symbol,
+                    "strat": strat,
+                    "side": side,
+                    "macro": macro,
+                    "entry": close,
+                    "sl": sl_price,
+                    "size_usd": pos_size_usd,
+                    "initial_size_usd": pos_size_usd, # Para calcular a dobra
+                    "adds": 0,
+                    "data": obter_data_hora_br()
                 }
-                estado["trades_hoje"] += 1
+                
+                print(f"   💵 Entrada: ${pos_size_usd:.2f} | Stop: {sl_price:.4f}")
                 salvar_estado(estado)
-                print(f"   💵 Ordem executada: ${valor:.2f} (Fator {mult}x | {perc_banca_usada}% da banca)")
-                break # Sai do loop para focar neste trade
+                break
             else:
-                status = "GRID" if adx < 25 else ("SNIPER" if adx < 40 else "PERIGO")
-                print(f"   ⚪ {symbol:<9} | {status:<6} | ADX {adx:.1f} | RSI {rsi:.1f}")
+                print(f"   ⚪ {symbol:<9} | {macro:<6} | {bias:<4} | ADX {adx:.1f}")
 
     salvar_estado(estado)
 
 if __name__ == "__main__":
-    try: 
+    try:
         run_bot()
     except Exception as e:
         traceback.print_exc()
-                
+        
