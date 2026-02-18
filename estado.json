@@ -2,9 +2,9 @@
     "banca_atual": 55.25838336711529,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 0,
-    "trades_hoje": 5,
-    "data_hoje": "17/02/2026",
-    "pnl_hoje": 0.2864573856004139,
+    "trades_hoje": 0,
+    "data_hoje": "18/02/2026",
+    "pnl_hoje": 0.0,
     "em_quarentena": false,
     "posicao_aberta": {
         "symbol": "ETH-USD",
