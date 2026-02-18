@@ -2,11 +2,24 @@
     "banca_atual": 55.25838336711529,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 0,
-    "trades_hoje": 4,
+    "trades_hoje": 5,
     "data_hoje": "17/02/2026",
     "pnl_hoje": 0.2864573856004139,
     "em_quarentena": false,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "tipo": "buy",
+        "modo": "GRID",
+        "entrada": 1983.845458984375,
+        "tp": 2003.6839135742189,
+        "sl": 1967.9746953125,
+        "valor_investido": 2.2103353346846117,
+        "nivel_mg": 0,
+        "fator_mg": 1.0,
+        "perc_banca": 4.0,
+        "criterio": "ADX 20.7 | RSI 43.9 < 45",
+        "data_hora": "17/02/2026 21:49:52"
+    },
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
