@@ -1,25 +1,12 @@
 {
-    "banca_atual": 55.25838336711529,
+    "banca_atual": 55.32669369711063,
     "pico_banca": 60.16559364929601,
     "martingale_idx": 0,
     "trades_hoje": 0,
     "data_hoje": "18/02/2026",
-    "pnl_hoje": 0.0,
+    "pnl_hoje": 0.06831032999533766,
     "em_quarentena": false,
-    "posicao_aberta": {
-        "symbol": "ETH-USD",
-        "tipo": "buy",
-        "modo": "GRID",
-        "entrada": 1983.845458984375,
-        "tp": 2003.6839135742189,
-        "sl": 1967.9746953125,
-        "valor_investido": 2.2103353346846117,
-        "nivel_mg": 0,
-        "fator_mg": 1.0,
-        "perc_banca": 4.0,
-        "criterio": "ADX 20.7 | RSI 43.9 < 45",
-        "data_hora": "17/02/2026 21:49:52"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "15/02/2026 01:10:27",
@@ -268,6 +255,24 @@
             "resultado": "\u2705 TAKE PROFIT",
             "lucro_usd": 0.08,
             "saldo_pos_trade": 55.26
+        },
+        {
+            "data": "18/02/2026 03:29:58",
+            "symbol": "ETH-USD",
+            "modo": "GRID",
+            "tipo": "BUY",
+            "nivel_mg": 0,
+            "fator_mg": 1.0,
+            "investido": 2.21,
+            "perc_banca": 4.0,
+            "entrada": 1983.845458984375,
+            "saida": 2004.2823486328125,
+            "tp": 2003.6839135742189,
+            "sl": 1967.9746953125,
+            "criterio": "ADX 20.7 | RSI 43.9 < 45",
+            "resultado": "\u2705 TAKE PROFIT",
+            "lucro_usd": 0.07,
+            "saldo_pos_trade": 55.33
         }
     ],
     "banca_inicial": 60.0,
