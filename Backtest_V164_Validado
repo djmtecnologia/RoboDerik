@@ -1,0 +1,328 @@
+import sys
+import time
+from datetime import datetime
+import requests
+import pandas as pd
+import numpy as np
+
+# --- CONFIGURAÇÃO GLOBAL ---
+DATA_INICIO_STR = "2020-01-01"
+DATA_FIM_STR    = "2026-02-17"
+NOME_CENARIO    = "💎 V164 ASYMMETRIC COMPOUNDER (DEEP TREND + BEAR SHIELD)"
+
+# --- CONFIGURAÇÕES ---
+BANCA_INICIAL = 60.00
+COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"] 
+TIMEFRAME = "4h"
+
+# RISK MANAGEMENT
+RISK_AGRESSIVE = 0.06 # 6% (Bull Market)
+RISK_CONSERVATIVE = 0.02 # 2% (Bear/Chop)
+MAX_POSICOES = 3
+TAXA = 0.001
+
+# APRENDIZADO
+learning_db = {
+    'TREND': {'wins': 0, 'loss': 0, 'weight': 1.0},
+    'TRAP':  {'wins': 0, 'loss': 0, 'weight': 1.0}
+}
+
+annual_stats = {year: {'start': 0, 'end': 0, 'pnl': 0, 'trades': 0, 'wins': 0} for year in range(2020, 2027)}
+
+# --- 1. DATA LAYER ---
+def fetch_binance_data(symbol, start_date_str, end_date_str=None):
+    interval = TIMEFRAME
+    limit = 1000
+    base_url = "https://data-api.binance.vision/api/v3/klines"
+    
+    start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+    start_ts = int(start_dt.timestamp() * 1000)
+    
+    if end_date_str: end_ts = int(datetime.strptime(end_date_str, "%Y-%m-%d").timestamp() * 1000)
+    else: end_ts = int(datetime.now().timestamp() * 1000)
+
+    print(f"📥 {symbol}...", end=" ", flush=True)
+    all_klines = []
+    current_start = start_ts
+    
+    while True:
+        params = {"symbol": symbol, "interval": interval, "startTime": current_start, "limit": limit}
+        try:
+            r = requests.get(base_url, params=params, timeout=10)
+            if r.status_code != 200: break
+            d = r.json()
+            if not d: break
+            chunk = [x for x in d if x[0] <= end_ts]
+            if not chunk: break
+            all_klines.extend(chunk)
+            current_start = chunk[-1][0] + 1
+            if len(d) < limit or current_start > end_ts: break
+            time.sleep(0.02) 
+        except: break 
+    print(f"✅ {len(all_klines)}")
+    if not all_klines: return None
+    
+    df = pd.DataFrame(all_klines, columns=["open_time", "open", "high", "low", "close", "v", "ct", "qv", "tr", "tb", "tq", "ig"])
+    df["date"] = pd.to_datetime(df["open_time"], unit="ms")
+    for c in ["open", "high", "low", "close", "v"]: df[c] = pd.to_numeric(df[c], errors='coerce')
+    df.set_index("date", inplace=True)
+    return df
+
+# --- 2. FEATURE ENGINE ---
+def calcular_features(df):
+    c = df['close']; h = df['high']; l = df['low']
+    
+    df['ema20'] = c.ewm(span=20).mean()
+    df['ema50'] = c.ewm(span=50).mean() # Exit Bull
+    df['ema200'] = c.ewm(span=200).mean() # Trend Local
+    df['ema800'] = c.ewm(span=800).mean() # THE SHIELD (Macro Trend)
+    
+    tr = pd.concat([h-l, (h-c.shift(1)).abs(), (l-c.shift(1)).abs()], axis=1).max(axis=1)
+    df['atr'] = tr.ewm(alpha=1/14).mean()
+    
+    # ADX
+    up, down = h - h.shift(1), l.shift(1) - l
+    plus_dm = np.where((up > down) & (up > 0), up, 0.0)
+    minus_dm = np.where((down > up) & (down > 0), down, 0.0)
+    tr_s = tr.ewm(alpha=1/14).mean()
+    plus_di = 100*(pd.Series(plus_dm, index=df.index).ewm(alpha=1/14).mean()/tr_s)
+    minus_di = 100*(pd.Series(minus_dm, index=df.index).ewm(alpha=1/14).mean()/tr_s)
+    dx = 100*(abs(plus_di-minus_di)/(plus_di+minus_di))
+    df['adx'] = dx.ewm(alpha=1/14).mean()
+    
+    # BB
+    bb_mean = c.rolling(20).mean(); bb_std = c.rolling(20).std()
+    df['bb_u'] = bb_mean + 2*bb_std; df['bb_l'] = bb_mean - 2*bb_std
+    df['bb_width'] = (df['bb_u'] - df['bb_l']) / df['ema20']
+    
+    # Wicks
+    cr = (h-l).replace(0, 0.00001)
+    df['upper_wick'] = (h - df[['open','close']].max(axis=1)) / cr
+    df['lower_wick'] = (df[['open','close']].min(axis=1) - l) / cr
+
+    df.dropna(inplace=True)
+    return df
+
+# --- 3. INTELLIGENCE ---
+def get_regime_and_bias(row):
+    # Bias Local
+    if row['close'] > row['ema200']: bias = "BULL"
+    else: bias = "BEAR"
+        
+    # MACRO SHIELD (A Proteção de 2022)
+    # Se preço < EMA 800, estamos em inverno nuclear.
+    if row['close'] < row['ema800']:
+        macro = "WINTER"
+    else:
+        macro = "SUMMER"
+
+    return macro, bias
+
+def update_learning(strat, pnl):
+    db = learning_db[strat]
+    if pnl > 0:
+        db['wins'] += 1
+        db['weight'] = min(db['weight'] * 1.1, 3.0) 
+    else:
+        db['loss'] += 1
+        db['weight'] = max(db['weight'] * 0.9, 0.3)
+
+# --- 4. EXECUTION ---
+def run_backtest_v164():
+    print(f"🧬 INICIANDO V164 ASYMMETRIC COMPOUNDER (2020-2026)...")
+    print(f"🌍 Cenário: {NOME_CENARIO}")
+    
+    datasets = {}
+    timestamps = set()
+    
+    for coin in COINS:
+        df = fetch_binance_data(coin, DATA_INICIO_STR, DATA_FIM_STR)
+        if df is not None:
+            df = calcular_features(df)
+            datasets[coin] = df.to_dict('index')
+            timestamps.update(df.index)
+            
+    timeline = sorted(list(timestamps))
+    
+    banca = BANCA_INICIAL
+    pico_banca = BANCA_INICIAL
+    max_dd = 0.0
+    posicoes = {}
+    historico = []
+    
+    current_year = timeline[0].year
+    annual_stats[current_year]['start'] = banca
+    
+    print(f"\n⚡ Processando {len(timeline)} velas de 4H...")
+
+    for ts in timeline:
+        if ts.year != current_year:
+            annual_stats[current_year]['end'] = banca
+            current_year = ts.year
+            annual_stats[current_year]['start'] = banca
+            print(f"   📅 {current_year} -> Banca: ${banca:.2f}")
+
+        if banca > pico_banca: pico_banca = banca
+        dd = (pico_banca - banca) / pico_banca
+        if dd > max_dd: max_dd = dd
+
+        # --- A. GESTÃO ---
+        for symb in list(posicoes.keys()):
+            pos = posicoes[symb]
+            if ts not in datasets[symb]: continue
+            row = datasets[symb][ts]
+            
+            fechou=False; motivo=""; p_exit=0
+            
+            # --- SAÍDA ASSIMÉTRICA (O SEGREDO) ---
+            if pos['strat'] == 'TREND':
+                # Se for LONG de tendência em BULL MARKET -> EXIT LENTO (EMA 50)
+                if pos['side'] == 'buy' and pos['macro_entry'] == "SUMMER":
+                    if row['close'] < row['ema50']: # <--- DEIXA CORRER
+                        fechou=True; motivo="TP Deep Trend"; p_exit=row['close']
+                
+                # Qualquer outro cenário (Short ou Long contra tendência macro) -> EXIT RÁPIDO (EMA 20)
+                else:
+                    if (pos['side']=='buy' and row['close'] < row['ema20']) or \
+                       (pos['side']=='sell' and row['close'] > row['ema20']):
+                        fechou=True; motivo="TP Fast"; p_exit=row['close']
+                    
+            elif pos['strat'] == 'TRAP':
+                target = row['ema50']
+                if (pos['side']=='buy' and row['high'] >= target) or \
+                   (pos['side']=='sell' and row['low'] <= target):
+                    fechou=True; motivo="TP Trap"; p_exit=target
+
+            # Stop / Liquidação
+            if not fechou:
+                liq = pos['entry']*(1-(1/pos['lev'])) if pos['side']=='buy' else pos['entry']*(1+(1/pos['lev']))
+                if (pos['side']=='buy' and row['low']<=liq) or (pos['side']=='sell' and row['high']>=liq):
+                    fechou=True; motivo="💀 LIQ"; p_exit=liq
+                elif (pos['side']=='buy' and row['low']<=pos['sl']) or (pos['side']=='sell' and row['high']>=pos['sl']):
+                    fechou=True; motivo="SL"; p_exit=pos['sl']
+
+            # PIRAMIDAGEM SEGURA (Apenas 1 Add, Apenas em Summer Trend)
+            if not fechou and pos['strat'] == 'TREND' and pos['macro_entry'] == "SUMMER" and pos['adds'] < 1:
+                pnl_pct = (row['close'] - pos['entry']) / pos['entry']
+                if pos['side'] == 'buy' and pnl_pct > 0.05: # 5% de alta pura
+                    add_margin = pos['initial_margin']
+                    if banca > add_margin:
+                        total_notional = (pos['margin'] * pos['lev']) + (add_margin * pos['lev'])
+                        new_entry = ((pos['margin'] * pos['lev'] * pos['entry']) + (add_margin * pos['lev'] * row['close'])) / total_notional
+                        
+                        pos['margin'] += add_margin
+                        pos['entry'] = new_entry
+                        pos['adds'] += 1
+                        # Não move stop para BE imediatamente, mantém técnico (ATR) do novo preço
+                        pos['sl'] = new_entry - (row['atr'] * 2.0)
+
+            if fechou:
+                pnl_raw = (p_exit - pos['entry']) if pos['side']=='buy' else (pos['entry'] - p_exit)
+                pnl_pct = (pnl_raw / pos['entry']) * pos['lev']
+                pnl_usd = pos['margin'] * pnl_pct
+                fee = pos['margin'] * pos['lev'] * TAXA * 2
+                liq_pnl = pnl_usd - fee
+                
+                banca += liq_pnl
+                update_learning(pos['strat'], liq_pnl)
+                
+                annual_stats[ts.year]['pnl'] += liq_pnl
+                annual_stats[ts.year]['trades'] += 1
+                if liq_pnl > 0: annual_stats[ts.year]['wins'] += 1
+                
+                historico.append({'lucro': liq_pnl, 'strat': pos['strat'], 'lev': pos['lev']})
+                del posicoes[symb]
+
+        if banca < 5: break
+
+        # --- B. SCANNER ---
+        if len(posicoes) < MAX_POSICOES:
+            for symb in COINS:
+                if symb in posicoes: continue
+                if ts not in datasets[symb]: continue
+                row = datasets[symb][ts]
+                
+                macro, bias = get_regime_and_bias(row)
+                signal=False; side=""; strat=""; lev=1; risk=RISK_CONSERVATIVE
+                
+                # --- STRATEGY 1: TREND (COM FILTRO MACRO) ---
+                if row['adx'] > 20: 
+                    # Se estamos em SUMMER (Acima EMA800), LIBERA LONG AGRESSIVO
+                    if macro == "SUMMER":
+                        if row['close'] > row['ema20']:
+                            signal=True; side='buy'; strat='TREND'
+                            lev = 25 # Alavancagem Alta para Bull Run
+                            risk = RISK_AGRESSIVE # 6% Risco
+                            
+                    # Se estamos em WINTER (Abaixo EMA800), PROIBIDO LONG DE TENDÊNCIA
+                    # Apenas Short Permitido
+                    elif macro == "WINTER":
+                        if row['close'] < row['ema20']:
+                            signal=True; side='sell'; strat='TREND'
+                            lev = 5 # Mão leve no bear
+                            risk = RISK_CONSERVATIVE
+                
+                # --- STRATEGY 2: TRAP (LATERAL) ---
+                if not signal and row['adx'] < 30:
+                    if bias == "BULL" and row['lower_wick'] > 0.5 and row['low'] < row['bb_l']:
+                        signal=True; side='buy'; strat='TRAP'
+                        lev = 5; risk = RISK_CONSERVATIVE
+                    elif bias == "BEAR" and row['upper_wick'] > 0.5 and row['high'] > row['bb_u']:
+                        signal=True; side='sell'; strat='TRAP'
+                        lev = 5; risk = RISK_CONSERVATIVE
+
+                if signal:
+                    weight = learning_db[strat]['weight']
+                    risk_usd = banca * risk * weight
+                    
+                    # Stop Loss
+                    sl_atr = row['atr'] * 2.0
+                    sl = row['close'] - sl_atr if side=='buy' else row['close'] + sl_atr
+                    
+                    stop_dist = abs(row['close'] - sl)
+                    if stop_dist == 0: continue
+                    
+                    pos_size = risk_usd / stop_dist
+                    margin = (pos_size * row['close']) / lev
+                    
+                    # Teto de Margem: 30% em Summer Trend, 15% nos outros
+                    teto = 0.30 if (macro == "SUMMER" and strat == "TREND") else 0.15
+                    if margin > banca * teto: margin = banca * teto
+                    
+                    posicoes[symb] = {
+                        'entry': row['close'], 'sl': sl, 'margin': margin,
+                        'lev': lev, 'side': side, 'strat': strat,
+                        'macro_entry': macro, 'initial_margin': margin, 'adds': 0
+                    }
+
+    last_year = timeline[-1].year
+    annual_stats[last_year]['end'] = banca
+
+    lucro = banca - BANCA_INICIAL
+    roi = (lucro / BANCA_INICIAL) * 100
+    wins = len([x for x in historico if x['lucro'] > 0])
+    total = len(historico)
+    wr = (wins/total*100) if total > 0 else 0
+    
+    print("\n" + "="*60)
+    print(f"🧬 RESULTADO V164 ASYMMETRIC COMPOUNDER")
+    print("="*60)
+    print(f"💰 Banca Inicial: ${BANCA_INICIAL:.2f}")
+    print(f"💰 Banca Final:   ${banca:.2f}")
+    print(f"📈 Lucro Total:   ${lucro:.2f} ({roi:.2f}%)")
+    print(f"📉 Max Drawdown:  {max_dd*100:.2f}%")
+    print("-" * 65)
+    print(f"{'ANO':<6} | {'START':<10} | {'END':<10} | {'ROI':<8} | {'WR':<6} | {'TRADES'}")
+    print("-" * 65)
+    
+    for year in range(2020, 2027):
+        s = annual_stats[year]
+        if s['start'] == 0: continue
+        roi_ano = ((s['end'] - s['start']) / s['start']) * 100 if s['start'] > 0 else 0
+        wr_ano = (s['wins'] / s['trades'] * 100) if s['trades'] > 0 else 0
+        print(f"{year:<6} | {s['start']:<10.2f} | {s['end']:<10.2f} | {roi_ano:<8.2f}% | {wr_ano:<6.1f} | {s['trades']}")
+    print("="*60)
+
+if __name__ == "__main__":
+    try: run_backtest_v164()
+    except KeyboardInterrupt: print("\n🛑 Interrompido.")
