@@ -16,8 +16,8 @@ COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"]
 TIMEFRAME = "4h"
 
 # RISK MANAGEMENT
-RISK_AGRESSIVE = 0.06 # 6% (Bull Market)
-RISK_CONSERVATIVE = 0.02 # 2% (Bear/Chop)
+RISK_AGRESSIVE = 0.1 # 10% (Bull Market)
+RISK_CONSERVATIVE = 0.015 # 1,5% (Bear/Chop)
 MAX_POSICOES = 3
 TAXA = 0.001
 
@@ -58,7 +58,7 @@ def fetch_binance_data(symbol, start_date_str, end_date_str=None):
             current_start = chunk[-1][0] + 1
             if len(d) < limit or current_start > end_ts: break
             time.sleep(0.02) 
-        except: break 
+        except: break
     print(f"✅ {len(all_klines)}")
     if not all_klines: return None
     
