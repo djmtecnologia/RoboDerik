@@ -59,7 +59,7 @@ def inicializar_arquivo():
     """Cria o arquivo JSON inicial se ele não existir."""
     if not os.path.exists(STATE_FILE):
         dados_iniciais = {
-            "banca_atual": 60.0,      # BANCA INICIAL
+            "banca_atual": 60.0,      
             "pico_banca": 60.0,
             "posicao_aberta": None,
             "historico_trades": [],
@@ -97,13 +97,11 @@ def salvar_estado(estado):
 
 def obter_dados_v164(symbol):
     try:
-        # Baixa 60 dias para garantir cálculo correto da EMA 800
         df = yf.download(symbol, period="60d", interval=TIMEFRAME, progress=False)
         
         if df.empty or len(df) < 805: 
             return None
         
-        # Tratamento MultiIndex (YFinance novo)
         if isinstance(df.columns, pd.MultiIndex): 
             df.columns = df.columns.get_level_values(0)
         
@@ -111,17 +109,14 @@ def obter_dados_v164(symbol):
         df.columns = [c.lower() for c in df.columns]
 
         # --- INDICADORES TÉCNICOS V164 ---
-        # Médias
         df['ema20'] = ta.ema(df['close'], length=20)
-        df['ema50'] = ta.ema(df['close'], length=50)   # Exit Lento (Summer)
-        df['ema200'] = ta.ema(df['close'], length=200) # Trend Bias
-        df['ema800'] = ta.ema(df['close'], length=800) # The Shield (Macro)
+        df['ema50'] = ta.ema(df['close'], length=50)   
+        df['ema200'] = ta.ema(df['close'], length=200) 
+        df['ema800'] = ta.ema(df['close'], length=800) 
 
-        # Volatilidade e Força
         df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
 
-        # Bollinger (Para Trap/Rejeição)
         bb = ta.bbands(df['close'], length=20, std=2)
         if bb is not None:
             df['bb_l'] = bb.iloc[:, 0]
@@ -135,7 +130,6 @@ def obter_dados_v164(symbol):
 # --- LÓGICA PRINCIPAL ---
 
 def run_bot():
-    # 1. GARANTE QUE O ARQUIVO EXISTE ANTES DE TUDO
     inicializar_arquivo()
     
     hora_atual = obter_data_hora_br()
@@ -146,14 +140,13 @@ def run_bot():
 
     print(f"💰 Banca: ${estado['banca_atual']:.2f} | PnL Hoje: ${estado['pnl_hoje']:.2f}")
 
-    # Reinicia PnL diário se mudou o dia
     hoje = obter_data_hoje_br()
     if estado["data_hoje"] != hoje:
         estado["data_hoje"] = hoje
         estado["pnl_hoje"] = 0.0
         salvar_estado(estado)
 
-    # --- 2. GESTÃO DA POSIÇÃO ABERTA ---
+    # --- 1. GESTÃO DA POSIÇÃO ABERTA ---
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
@@ -170,7 +163,6 @@ def run_bot():
             fechou = False
             motivo = ""
             
-            # Cálculo de Lucro Não Realizado
             if pos['side'] == 'buy':
                 lucro_unrealized_pct = (atual - pos['entry']) / pos['entry']
             else:
@@ -178,17 +170,13 @@ def run_bot():
 
             print(f"👀 {symbol} ({pos['strat']}) | PnL Unrealized: {lucro_unrealized_pct*100:.2f}% | Adds: {pos['adds']}")
 
-            # --- A. SAÍDAS ASSIMÉTRICAS COM FILTRO DE RUÍDO (MIN_PROFIT) ---
-            # Filtro: Só aceita Take Profit se o lucro bruto for maior que 0.3% (Cobre taxas de 0.2% + lucro mínimo)
             MIN_PROFIT_PCT = 0.003
 
+            # --- SAÍDAS ---
             if pos['strat'] == 'TREND':
-                # SUMMER TREND (BULL): Sai apenas na EMA 50 (Deixa correr)
                 if pos['side'] == 'buy' and pos['macro'] == "SUMMER":
                     if atual < ema50 and lucro_unrealized_pct > MIN_PROFIT_PCT:
                         fechou = True; motivo = "✅ TP Deep Trend (EMA50)"
-                
-                # WINTER/SHORT TREND: Sai rápido na EMA 20
                 else:
                     if pos['side'] == 'buy' and atual < ema20 and lucro_unrealized_pct > MIN_PROFIT_PCT:
                         fechou = True; motivo = "✅ TP Fast (EMA20)"
@@ -196,69 +184,65 @@ def run_bot():
                         fechou = True; motivo = "✅ TP Fast (EMA20)"
             
             elif pos['strat'] == 'TRAP':
-                # Trap sai na Média Rápida (EMA50 usada como alvo aqui)
                 target = ema50
                 if pos['side'] == 'buy' and float(dados['high']) >= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
                     fechou = True; motivo = "✅ TP Trap"
                 elif pos['side'] == 'sell' and float(dados['low']) <= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
                     fechou = True; motivo = "✅ TP Trap"
 
-            # --- B. STOP LOSS TÉCNICO (Sempre ativo, ignora o lucro mínimo) ---
+            # --- STOP LOSS ---
             if not fechou:
                 if pos['side'] == 'buy' and atual <= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
                 elif pos['side'] == 'sell' and atual >= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
 
-            # --- C. PIRAMIDAGEM (GOLDEN ADD) ---
-            # Apenas 1 Add, Apenas em Summer Trend, se lucrar > 5%
+            # --- PIRAMIDAGEM ---
             if not fechou and pos['strat'] == 'TREND' and pos['macro'] == "SUMMER" and pos['adds'] < MAX_ADDS:
                 if pos['side'] == 'buy' and lucro_unrealized_pct > 0.05:
-                    
-                    add_usd = pos['initial_size_usd'] # Dobra a mão
+                    add_usd = pos['initial_size_usd'] 
                     if estado['banca_atual'] > add_usd:
-                        # Novo PM
                         total_size = pos['size_usd'] + add_usd
                         new_entry = ((pos['size_usd'] * pos['entry']) + (add_usd * atual)) / total_size
                         
                         pos['size_usd'] = total_size
                         pos['entry'] = new_entry
                         pos['adds'] += 1
-                        
-                        # Stop Loss sobe, mas mantém margem técnica (2 ATR)
                         pos['sl'] = new_entry - (atr * 2.0)
                         
                         print(f"🔥 PIRAMIDAGEM! Novo PM: {new_entry:.2f}")
                         salvar_estado(estado)
 
-            # --- D. EXECUTA FECHAMENTO (COM DESCONTO DE TAXAS BINANCE) ---
+            # --- FECHAMENTO ---
             if fechou:
-                # Calcula PnL Bruto
                 if pos['side'] == 'buy':
                     pnl_bruto = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
                 else:
                     pnl_bruto = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
                 
-                # Desconta taxa da Binance Spot (~0.1% entrada + ~0.1% saída = 0.2% total)
                 taxa_corretora_usd = pos['size_usd'] * 0.002
                 pnl_final = pnl_bruto - taxa_corretora_usd
 
                 estado['banca_atual'] += pnl_final
                 estado['pnl_hoje'] += pnl_final
                 
-                # Log Histórico
+                # ---> DADOS ADICIONADOS PARA O RELATÓRIO EXCEL AQUI <---
                 log_trade = {
                     "data": obter_data_hora_br(),
                     "symbol": symbol,
                     "strat": pos['strat'],
                     "side": pos['side'],
-                    "lucro": round(pnl_final, 2), # Salva o lucro líquido real
+                    "criterio": pos.get('criterio', 'N/A'),
+                    "entrada": pos['entry'],
+                    "saida": atual,
+                    "tp": pos.get('tp', 0.0),
+                    "sl": pos['sl'],
+                    "lucro": round(pnl_final, 2), 
                     "motivo": motivo,
                     "adds": pos['adds']
                 }
                 estado['historico_trades'].append(log_trade)
                 
-                # Mantém histórico limpo (últimos 50)
                 if len(estado['historico_trades']) > 50:
                     estado['historico_trades'].pop(0)
 
@@ -271,7 +255,7 @@ def run_bot():
                 salvar_estado(estado)
                 return
 
-    # --- 3. ESCANEAMENTO (SÓ SE ESTIVER LIVRE) ---
+    # --- 2. ESCANEAMENTO ---
     if estado["posicao_aberta"] is None:
         print(f"🔎 Escaneando oportunidades V164...")
         
@@ -279,55 +263,56 @@ def run_bot():
             row = obter_dados_v164(symbol)
             if row is None: continue
 
-            # Indicadores
             close = float(row['close'])
             ema20 = float(row['ema20'])
+            ema50 = float(row['ema50'])
             ema200 = float(row['ema200'])
             ema800 = float(row['ema800'])
             adx = float(row['adx'])
             atr = float(row['atr'])
             
-            # --- CLASSIFICAÇÃO DE REGIME ---
             macro = "SUMMER" if close > ema800 else "WINTER"
             bias = "BULL" if close > ema200 else "BEAR"
             
             signal = None; side = ""; strat = ""; risk_profile = RISK_WINTER
+            criterio_desc = ""
+            tp_alvo_inicial = 0.0 # Guardando a EMA do momento da entrada para o Relatório
 
-            # ESTRATÉGIA 1: TREND (ADX > 20)
             if adx > 20:
-                # SUMMER: Libera Long Agressivo
                 if macro == "SUMMER":
                     if close > ema20:
                         signal = True; side = "buy"; strat = "TREND"
-                        risk_profile = RISK_SUMMER # 10%
+                        risk_profile = RISK_SUMMER
+                        criterio_desc = f"SUMMER TREND | ADX {adx:.1f} > 20"
+                        tp_alvo_inicial = ema50 # O Alvo no Summer é a EMA 50
                 
-                # WINTER: Proibido Long de Tendência. Apenas Short.
                 elif macro == "WINTER":
                     if close < ema20:
                         signal = True; side = "sell"; strat = "TREND"
-                        risk_profile = RISK_WINTER # 1.5% (Defesa)
+                        risk_profile = RISK_WINTER
+                        criterio_desc = f"WINTER TREND SHORT | ADX {adx:.1f} > 20"
+                        tp_alvo_inicial = ema20 # O Alvo no Winter é a EMA 20
 
-            # ESTRATÉGIA 2: TRAP (ADX < 30) - Reversão
             if not signal and adx < 30:
-                # Trap de Fundo (Bull Bias)
                 if bias == "BULL" and float(row['low']) <= float(row['bb_l']):
-                    # Verifica martelo/rejeição (pavio maior que corpo)
                     body = abs(float(row['open']) - close)
                     wick = min(float(row['open']), close) - float(row['low'])
                     if wick > body: 
                         signal = True; side = "buy"; strat = "TRAP"
                         risk_profile = RISK_WINTER
+                        criterio_desc = f"TRAP FUNDO | Rejeição BB Inferior"
+                        tp_alvo_inicial = ema50
 
-                # Trap de Topo (Bear Bias + Winter)
                 elif bias == "BEAR" and macro == "WINTER": 
                     if float(row['high']) >= float(row['bb_u']):
                         signal = True; side = "sell"; strat = "TRAP"
                         risk_profile = RISK_WINTER
+                        criterio_desc = f"TRAP TOPO | Toque BB Superior"
+                        tp_alvo_inicial = ema50
 
             if signal:
                 print(f"🚀 SINAL ENCONTRADO: {side.upper()} {symbol} ({strat} - {macro})")
                 
-                # Position Sizing pelo Stop Loss (Gestão Profissional)
                 risk_usd = estado['banca_atual'] * risk_profile
                 sl_dist = atr * 2.0
                 
@@ -337,21 +322,21 @@ def run_bot():
                 dist_pct = sl_dist / close
                 if dist_pct == 0: continue
 
-                # Valor da posição = Risco em $ / Distancia Stop %
                 pos_size_usd = risk_usd / dist_pct
                 
-                # Trava de Segurança (Max Allocation)
-                # 30% da banca em Summer Trend, 15% nos outros
                 max_alloc = 0.30 if (macro == "SUMMER" and strat == "TREND") else 0.15
                 if pos_size_usd > estado['banca_atual'] * max_alloc:
                     pos_size_usd = estado['banca_atual'] * max_alloc
 
+                # ---> DADOS ADICIONADOS PARA O ESTADO JSON AQUI <---
                 estado['posicao_aberta'] = {
                     "symbol": symbol,
                     "strat": strat,
                     "side": side,
                     "macro": macro,
+                    "criterio": criterio_desc,
                     "entry": close,
+                    "tp": tp_alvo_inicial,
                     "sl": sl_price,
                     "size_usd": pos_size_usd,
                     "initial_size_usd": pos_size_usd,
@@ -359,9 +344,9 @@ def run_bot():
                     "data": obter_data_hora_br()
                 }
                 
-                print(f"   💵 Entrada: ${pos_size_usd:.2f} | Stop: {sl_price:.4f}")
+                print(f"   💵 Entrada: ${pos_size_usd:.2f} | Stop: {sl_price:.4f} | TP Ref: {tp_alvo_inicial:.4f}")
                 salvar_estado(estado)
-                break # Foca em 1 trade por vez
+                break 
             else:
                 print(f"   ⚪ {symbol:<9} | {macro:<6} | {bias:<4} | ADX {adx:.1f}")
 
