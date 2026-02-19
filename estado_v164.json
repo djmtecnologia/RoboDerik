@@ -1,7 +1,18 @@
 {
     "banca_atual": 60.00264559322432,
     "pico_banca": 60.00264559322432,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "entry": 1964.4913330078125,
+        "sl": 1975.918109268989,
+        "size_usd": 9.000396838983647,
+        "initial_size_usd": 9.000396838983647,
+        "adds": 0,
+        "data": "19/02/2026 02:28:49"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
