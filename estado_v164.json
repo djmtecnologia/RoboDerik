@@ -1,7 +1,20 @@
 {
     "banca_atual": 60.0136609013117,
     "pico_banca": 60.07003074294354,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "TRAP TOPO | Toque BB Superior",
+        "entry": 80.98695373535156,
+        "tp": 81.08335038635049,
+        "sl": 81.67871581816347,
+        "size_usd": 9.002049135196755,
+        "initial_size_usd": 9.002049135196755,
+        "adds": 0,
+        "data": "19/02/2026 14:38:56"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
