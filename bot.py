@@ -43,10 +43,11 @@ SYMBOL_MAP = {
 
 # Configuração de Tempo
 TIMEFRAME = "15m" 
+ALAVANCAGEM = 1 # Spot ou ajuste na exchange (O bot calcula o lote)
 
 # GESTÃO DE RISCO V164
 RISK_SUMMER = 0.10    # 10% da banca em Tendência de Alta Limpa (Summer)
-RISK_WINTER = 0.015    # 1,5% da banca em Mercado de Baixa (Winter/Defesa)
+RISK_WINTER = 0.015   # 1,5% da banca em Mercado de Baixa (Winter/Defesa)
 MAX_ADDS = 1          # Máximo de 1 piramidagem (Dobra a mão 1 vez)
 
 # ARQUIVO DE ESTADO
@@ -175,36 +176,41 @@ def run_bot():
             else:
                 lucro_unrealized_pct = (pos['entry'] - atual) / pos['entry']
 
-            # A. SAÍDAS ASSIMÉTRICAS
+            print(f"👀 {symbol} ({pos['strat']}) | PnL Unrealized: {lucro_unrealized_pct*100:.2f}% | Adds: {pos['adds']}")
+
+            # --- A. SAÍDAS ASSIMÉTRICAS COM FILTRO DE RUÍDO (MIN_PROFIT) ---
+            # Filtro: Só aceita Take Profit se o lucro bruto for maior que 0.3% (Cobre taxas de 0.2% + lucro mínimo)
+            MIN_PROFIT_PCT = 0.003
+
             if pos['strat'] == 'TREND':
                 # SUMMER TREND (BULL): Sai apenas na EMA 50 (Deixa correr)
                 if pos['side'] == 'buy' and pos['macro'] == "SUMMER":
-                    if atual < ema50:
+                    if atual < ema50 and lucro_unrealized_pct > MIN_PROFIT_PCT:
                         fechou = True; motivo = "✅ TP Deep Trend (EMA50)"
                 
                 # WINTER/SHORT TREND: Sai rápido na EMA 20
                 else:
-                    if pos['side'] == 'buy' and atual < ema20:
+                    if pos['side'] == 'buy' and atual < ema20 and lucro_unrealized_pct > MIN_PROFIT_PCT:
                         fechou = True; motivo = "✅ TP Fast (EMA20)"
-                    elif pos['side'] == 'sell' and atual > ema20:
+                    elif pos['side'] == 'sell' and atual > ema20 and lucro_unrealized_pct > MIN_PROFIT_PCT:
                         fechou = True; motivo = "✅ TP Fast (EMA20)"
             
             elif pos['strat'] == 'TRAP':
                 # Trap sai na Média Rápida (EMA50 usada como alvo aqui)
                 target = ema50
-                if pos['side'] == 'buy' and float(dados['high']) >= target:
+                if pos['side'] == 'buy' and float(dados['high']) >= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
                     fechou = True; motivo = "✅ TP Trap"
-                elif pos['side'] == 'sell' and float(dados['low']) <= target:
+                elif pos['side'] == 'sell' and float(dados['low']) <= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
                     fechou = True; motivo = "✅ TP Trap"
 
-            # B. STOP LOSS TÉCNICO
+            # --- B. STOP LOSS TÉCNICO (Sempre ativo, ignora o lucro mínimo) ---
             if not fechou:
                 if pos['side'] == 'buy' and atual <= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
                 elif pos['side'] == 'sell' and atual >= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
 
-            # C. PIRAMIDAGEM (GOLDEN ADD)
+            # --- C. PIRAMIDAGEM (GOLDEN ADD) ---
             # Apenas 1 Add, Apenas em Summer Trend, se lucrar > 5%
             if not fechou and pos['strat'] == 'TREND' and pos['macro'] == "SUMMER" and pos['adds'] < MAX_ADDS:
                 if pos['side'] == 'buy' and lucro_unrealized_pct > 0.05:
@@ -225,14 +231,18 @@ def run_bot():
                         print(f"🔥 PIRAMIDAGEM! Novo PM: {new_entry:.2f}")
                         salvar_estado(estado)
 
-            # D. EXECUTA FECHAMENTO
+            # --- D. EXECUTA FECHAMENTO (COM DESCONTO DE TAXAS BINANCE) ---
             if fechou:
-                # Calcula PnL Real
+                # Calcula PnL Bruto
                 if pos['side'] == 'buy':
-                    pnl_final = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
+                    pnl_bruto = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
                 else:
-                    pnl_final = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
+                    pnl_bruto = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
                 
+                # Desconta taxa da Binance Spot (~0.1% entrada + ~0.1% saída = 0.2% total)
+                taxa_corretora_usd = pos['size_usd'] * 0.002
+                pnl_final = pnl_bruto - taxa_corretora_usd
+
                 estado['banca_atual'] += pnl_final
                 estado['pnl_hoje'] += pnl_final
                 
@@ -242,7 +252,7 @@ def run_bot():
                     "symbol": symbol,
                     "strat": pos['strat'],
                     "side": pos['side'],
-                    "lucro": round(pnl_final, 2),
+                    "lucro": round(pnl_final, 2), # Salva o lucro líquido real
                     "motivo": motivo,
                     "adds": pos['adds']
                 }
@@ -257,7 +267,7 @@ def run_bot():
                 if estado['banca_atual'] > estado['pico_banca']:
                     estado['pico_banca'] = estado['banca_atual']
                 
-                print(f"✨ {motivo} | PnL: ${pnl_final:.2f}")
+                print(f"✨ TRADE FECHADO: {motivo} | PnL Bruto: ${pnl_bruto:.2f} | PnL Líquido (C/ Taxa): ${pnl_final:.2f}")
                 salvar_estado(estado)
                 return
 
@@ -289,13 +299,13 @@ def run_bot():
                 if macro == "SUMMER":
                     if close > ema20:
                         signal = True; side = "buy"; strat = "TREND"
-                        risk_profile = RISK_SUMMER # 6%
+                        risk_profile = RISK_SUMMER # 10%
                 
                 # WINTER: Proibido Long de Tendência. Apenas Short.
                 elif macro == "WINTER":
                     if close < ema20:
                         signal = True; side = "sell"; strat = "TREND"
-                        risk_profile = RISK_WINTER # 2% (Defesa)
+                        risk_profile = RISK_WINTER # 1.5% (Defesa)
 
             # ESTRATÉGIA 2: TRAP (ADX < 30) - Reversão
             if not signal and adx < 30:
@@ -363,4 +373,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Erro fatal: {e}")
         traceback.print_exc()
-        
+            
