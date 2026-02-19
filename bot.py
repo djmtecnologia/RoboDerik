@@ -46,12 +46,12 @@ TIMEFRAME = "15m"
 ALAVANCAGEM = 1 
 
 # GESTÃO DE RISCO V164
-RISK_SUMMER = 0.10    # 10% da banca em Tendência de Alta Limpa
+RISK_SUMMER = 0.10    # 10% da banca em Tendência de Alta
 RISK_WINTER = 0.015   # 1,5% da banca em Mercado de Baixa
 MAX_ADDS = 1          # Máximo de 1 piramidagem 
 
-# ZONA DE RUÍDO (BUFFER) PARA EVITAR VIOLINADAS DE MESMA VELA
-BUFFER_PCT = 0.002    # 0.2% de margem acima/abaixo da média
+# ZONA DE RUÍDO (BUFFER)
+BUFFER_PCT = 0.002    # 0.2% de margem 
 
 # ARQUIVO DE ESTADO
 STATE_FILE = "estado_v164.json"
@@ -69,7 +69,7 @@ def inicializar_arquivo():
         try:
             with open(STATE_FILE, "w") as f:
                 json.dump(dados_iniciais, f, indent=4)
-            print(f"✅ Arquivo '{STATE_FILE}' criado com sucesso! Banca: $60.00")
+            print(f"✅ Arquivo '{STATE_FILE}' criado com sucesso!")
         except Exception as e:
             print(f"❌ Erro crítico ao criar arquivo: {e}")
 
@@ -90,6 +90,8 @@ def salvar_estado(estado):
     except Exception as e:
         print(f"❌ Erro ao salvar: {e}")
 
+# --- MOTOR DE DADOS (SEPARANDO VELA FECHADA DE PREÇO ATUAL) ---
+
 def obter_dados_v164(symbol):
     try:
         df = yf.download(symbol, period="60d", interval=TIMEFRAME, progress=False)
@@ -99,11 +101,11 @@ def obter_dados_v164(symbol):
         df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
         df.columns = [c.lower() for c in df.columns]
 
+        # Calcula indicadores na série toda
         df['ema20'] = ta.ema(df['close'], length=20)
         df['ema50'] = ta.ema(df['close'], length=50)   
         df['ema200'] = ta.ema(df['close'], length=200) 
         df['ema800'] = ta.ema(df['close'], length=800) 
-
         df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         df['adx'] = ta.adx(df['high'], df['low'], df['close'])['ADX_14']
 
@@ -112,9 +114,34 @@ def obter_dados_v164(symbol):
             df['bb_l'] = bb.iloc[:, 0]
             df['bb_u'] = bb.iloc[:, 2]
 
-        return df.iloc[-1]
+        # O SEGREDO DO 1 MINUTO:
+        # Pega o preço atual em TEMPO REAL (vela aberta - índice -1)
+        current_price = float(df['close'].iloc[-1])
+        
+        # Pega os INDICADORES da última vela FECHADA (índice -2) para evitar repintura
+        row_closed = df.iloc[-2]
+
+        return {
+            "current_price": current_price,
+            "ema20": float(row_closed['ema20']),
+            "ema50": float(row_closed['ema50']),
+            "ema200": float(row_closed['ema200']),
+            "ema800": float(row_closed['ema800']),
+            "atr": float(row_closed['atr']),
+            "adx": float(row_closed['adx']),
+            "bb_l": float(row_closed['bb_l']),
+            "bb_u": float(row_closed['bb_u']),
+            "closed_open": float(row_closed['open']),
+            "closed_close": float(row_closed['close']),
+            "closed_high": float(row_closed['high']),
+            "closed_low": float(row_closed['low'])
+        }
+
     except Exception as e:
+        print(f"❌ Erro ao baixar {symbol}: {e}")
         return None
+
+# --- LÓGICA PRINCIPAL ---
 
 def run_bot():
     inicializar_arquivo()
@@ -136,13 +163,15 @@ def run_bot():
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
+        print(f"👀 Monitorando {symbol} ({pos['strat']} - {pos['macro']})...")
+        
         dados = obter_dados_v164(symbol)
         
         if dados is not None:
-            atual = float(dados['close'])
-            ema20 = float(dados['ema20'])
-            ema50 = float(dados['ema50'])
-            atr = float(dados['atr'])
+            atual = dados['current_price'] # Preço batendo agora
+            ema20 = dados['ema20']         # Média travada da vela fechada
+            ema50 = dados['ema50']
+            atr = dados['atr']
             
             fechou = False
             motivo = ""
@@ -152,28 +181,30 @@ def run_bot():
             else:
                 lucro_unrealized_pct = (pos['entry'] - atual) / pos['entry']
 
-            print(f"👀 Monitorando {symbol} ({pos['strat']}) | PnL Unrealized: {lucro_unrealized_pct*100:.2f}%")
+            print(f"   📊 PnL Unrealized: {lucro_unrealized_pct*100:.2f}% | Adds: {pos['adds']}")
 
-            # --- A. SAÍDAS ASSIMÉTRICAS COM BUFFER DE RUÍDO ---
+            # Mínimo de lucro para TP (cobre 0.2% de taxa Binance Spot)
+            MIN_PROFIT_PCT = 0.003 
+
+            # --- A. SAÍDAS ASSIMÉTRICAS ---
             if pos['strat'] == 'TREND':
                 if pos['side'] == 'buy' and pos['macro'] == "SUMMER":
-                    # Exige que perca a EMA 50 por uma margem clara (0.2%) para sair
-                    if atual < (ema50 * (1 - BUFFER_PCT)):
-                        fechou = True; motivo = "✅ TP Deep Trend (Rompeu EMA50)"
+                    if atual < (ema50 * (1 - BUFFER_PCT)) and lucro_unrealized_pct > MIN_PROFIT_PCT:
+                        fechou = True; motivo = "✅ TP Deep Trend (EMA50)"
                 else:
-                    if pos['side'] == 'buy' and atual < (ema20 * (1 - BUFFER_PCT)):
-                        fechou = True; motivo = "⚠️ Saída Dinâmica (Perdeu EMA20)"
-                    elif pos['side'] == 'sell' and atual > (ema20 * (1 + BUFFER_PCT)):
-                        fechou = True; motivo = "⚠️ Saída Dinâmica (Rompeu EMA20)"
+                    if pos['side'] == 'buy' and atual < (ema20 * (1 - BUFFER_PCT)) and lucro_unrealized_pct > MIN_PROFIT_PCT:
+                        fechou = True; motivo = "✅ TP Fast (EMA20)"
+                    elif pos['side'] == 'sell' and atual > (ema20 * (1 + BUFFER_PCT)) and lucro_unrealized_pct > MIN_PROFIT_PCT:
+                        fechou = True; motivo = "✅ TP Fast (EMA20)"
             
             elif pos['strat'] == 'TRAP':
                 target = ema50
-                if pos['side'] == 'buy' and float(dados['high']) >= target:
-                    fechou = True; motivo = "✅ TP Trap (Alvo Atingido)"
-                elif pos['side'] == 'sell' and float(dados['low']) <= target:
-                    fechou = True; motivo = "✅ TP Trap (Alvo Atingido)"
+                if pos['side'] == 'buy' and atual >= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
+                    fechou = True; motivo = "✅ TP Trap"
+                elif pos['side'] == 'sell' and atual <= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
+                    fechou = True; motivo = "✅ TP Trap"
 
-            # --- B. STOP LOSS TÉCNICO MAXIMO ---
+            # --- B. STOP LOSS TÉCNICO ---
             if not fechou:
                 if pos['side'] == 'buy' and atual <= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
@@ -192,15 +223,17 @@ def run_bot():
                         pos['entry'] = new_entry
                         pos['adds'] += 1
                         pos['sl'] = new_entry - (atr * 2.0)
+                        
+                        print(f"🔥 PIRAMIDAGEM! Novo PM: {new_entry:.2f}")
                         salvar_estado(estado)
 
-            # --- D. FECHAMENTO COM TAXAS REAIS ---
+            # --- D. FECHAMENTO ---
             if fechou:
-                # Calcula Lucro Bruto
-                if pos['side'] == 'buy': pnl_bruto = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
-                else: pnl_bruto = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
+                if pos['side'] == 'buy':
+                    pnl_bruto = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
+                else:
+                    pnl_bruto = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
                 
-                # Desconta Taxa Binance Spot (0.1% Entrada + 0.1% Saída) = 0.2%
                 taxa_corretora_usd = pos['size_usd'] * 0.002
                 pnl_final = pnl_bruto - taxa_corretora_usd
 
@@ -227,66 +260,74 @@ def run_bot():
                 estado['posicao_aberta'] = None
                 if estado['banca_atual'] > estado['pico_banca']: estado['pico_banca'] = estado['banca_atual']
                 
-                print(f"✨ TRADE FECHADO: {motivo} | PnL Bruto: ${pnl_bruto:.2f} | PnL c/ Taxa: ${pnl_final:.2f}")
+                print(f"✨ TRADE FECHADO: {motivo} | PnL Bruto: ${pnl_bruto:.2f} | Líquido: ${pnl_final:.2f}")
                 salvar_estado(estado)
                 return
 
     # --- 2. ESCANEAMENTO ---
     if estado["posicao_aberta"] is None:
-        print(f"🔎 Escaneando oportunidades V164...")
+        print(f"🔎 Escaneando mercado (Vela Fechada)...")
         
         for symbol, nome in SYMBOL_MAP.items():
-            row = obter_dados_v164(symbol)
-            if row is None: continue
+            dados = obter_dados_v164(symbol)
+            if dados is None: continue
 
-            close = float(row['close'])
-            ema20 = float(row['ema20'])
-            ema50 = float(row['ema50'])
-            ema200 = float(row['ema200'])
-            ema800 = float(row['ema800'])
-            adx = float(row['adx'])
-            atr = float(row['atr'])
+            current_price = dados['current_price']
+            ema20 = dados['ema20']
+            ema50 = dados['ema50']
+            ema200 = dados['ema200']
+            ema800 = dados['ema800']
+            adx = dados['adx']
+            atr = dados['atr']
             
-            macro = "SUMMER" if close > ema800 else "WINTER"
-            bias = "BULL" if close > ema200 else "BEAR"
+            macro = "SUMMER" if current_price > ema800 else "WINTER"
+            bias = "BULL" if current_price > ema200 else "BEAR"
             
             signal = None; side = ""; strat = ""; risk_profile = RISK_WINTER
             criterio_desc = ""
             tp_alvo_inicial = 0.0 
 
+            # ESTRATÉGIA 1: TREND (Confirma com preço atual quebrando a média da vela anterior)
             if adx > 20:
                 if macro == "SUMMER":
-                    # BUFFER: Exige que o preço esteja 0.2% ACIMA da Média para confirmar a força
-                    if close > (ema20 * (1 + BUFFER_PCT)):
+                    if current_price > (ema20 * (1 + BUFFER_PCT)):
                         signal = True; side = "buy"; strat = "TREND"
                         risk_profile = RISK_SUMMER
                         criterio_desc = f"SUMMER TREND | ADX {adx:.1f} > 20"
                         tp_alvo_inicial = ema50 
                 
                 elif macro == "WINTER":
-                    # BUFFER: Exige que o preço esteja 0.2% ABAIXO da Média para confirmar fraqueza
-                    if close < (ema20 * (1 - BUFFER_PCT)):
+                    if current_price < (ema20 * (1 - BUFFER_PCT)):
                         signal = True; side = "sell"; strat = "TREND"
                         risk_profile = RISK_WINTER
                         criterio_desc = f"WINTER TREND SHORT | ADX {adx:.1f} > 20"
-                        tp_alvo_inicial = ema20
+                        tp_alvo_inicial = ema20 
 
+            # ESTRATÉGIA 2: TRAP (Formato da vela anterior FECHADA)
             if not signal and adx < 30:
-                if bias == "BULL" and float(row['low']) <= float(row['bb_l']):
-                    body = abs(float(row['open']) - close)
-                    wick = min(float(row['open']), close) - float(row['low'])
-                    if wick > body: 
-                        signal = True; side = "buy"; strat = "TRAP"
-                        risk_profile = RISK_WINTER
-                        criterio_desc = f"TRAP FUNDO | Rejeição BB Inferior"
-                        tp_alvo_inicial = ema50
+                dist_alvo_pct = abs(ema50 - current_price) / current_price
+                
+                if dist_alvo_pct >= 0.004: # Tem espaço pra lucrar?
+                    if bias == "BULL" and dados['closed_low'] <= dados['bb_l']:
+                        # Martelo na vela fechada
+                        body = abs(dados['closed_open'] - dados['closed_close'])
+                        wick = min(dados['closed_open'], dados['closed_close']) - dados['closed_low']
+                        if wick > body: 
+                            signal = True; side = "buy"; strat = "TRAP"
+                            risk_profile = RISK_WINTER
+                            criterio_desc = f"TRAP FUNDO | Rejeição BB Inferior"
+                            tp_alvo_inicial = ema50
 
-                elif bias == "BEAR" and macro == "WINTER": 
-                    if float(row['high']) >= float(row['bb_u']):
-                        signal = True; side = "sell"; strat = "TRAP"
-                        risk_profile = RISK_WINTER
-                        criterio_desc = f"TRAP TOPO | Toque BB Superior"
-                        tp_alvo_inicial = ema50
+                    elif bias == "BEAR" and macro == "WINTER": 
+                        # Estrela Cadente na vela fechada
+                        if dados['closed_high'] >= dados['bb_u']:
+                            body = abs(dados['closed_open'] - dados['closed_close'])
+                            wick = dados['closed_high'] - max(dados['closed_open'], dados['closed_close'])
+                            if wick > body:
+                                signal = True; side = "sell"; strat = "TRAP"
+                                risk_profile = RISK_WINTER
+                                criterio_desc = f"TRAP TOPO | Rejeição BB Superior"
+                                tp_alvo_inicial = ema50
 
             if signal:
                 print(f"🚀 SINAL ENCONTRADO: {side.upper()} {symbol} ({strat} - {macro})")
@@ -294,10 +335,10 @@ def run_bot():
                 risk_usd = estado['banca_atual'] * risk_profile
                 sl_dist = atr * 2.0
                 
-                if side == "buy": sl_price = close - sl_dist
-                else: sl_price = close + sl_dist
+                if side == "buy": sl_price = current_price - sl_dist
+                else: sl_price = current_price + sl_dist
                 
-                dist_pct = sl_dist / close
+                dist_pct = sl_dist / current_price
                 if dist_pct == 0: continue
 
                 pos_size_usd = risk_usd / dist_pct
@@ -312,7 +353,7 @@ def run_bot():
                     "side": side,
                     "macro": macro,
                     "criterio": criterio_desc,
-                    "entry": close,
+                    "entry": current_price,
                     "tp": tp_alvo_inicial,
                     "sl": sl_price,
                     "size_usd": pos_size_usd,
