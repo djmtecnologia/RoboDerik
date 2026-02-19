@@ -1,7 +1,18 @@
 {
     "banca_atual": 59.98340281353335,
     "pico_banca": 60.0,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ADA-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "entry": 0.27552661299705505,
+        "sl": 0.27681008321466816,
+        "size_usd": 8.997510422030002,
+        "initial_size_usd": 8.997510422030002,
+        "adds": 0,
+        "data": "18/02/2026 23:30:50"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
