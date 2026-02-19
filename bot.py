@@ -45,8 +45,8 @@ SYMBOL_MAP = {
 TIMEFRAME = "15m" 
 
 # GESTÃO DE RISCO V164
-RISK_SUMMER = 0.06    # 6% da banca em Tendência de Alta Limpa (Summer)
-RISK_WINTER = 0.02    # 2% da banca em Mercado de Baixa (Winter/Defesa)
+RISK_SUMMER = 0.10    # 10% da banca em Tendência de Alta Limpa (Summer)
+RISK_WINTER = 0.015    # 1,5% da banca em Mercado de Baixa (Winter/Defesa)
 MAX_ADDS = 1          # Máximo de 1 piramidagem (Dobra a mão 1 vez)
 
 # ARQUIVO DE ESTADO
