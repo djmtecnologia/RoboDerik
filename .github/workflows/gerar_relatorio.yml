@@ -17,7 +17,7 @@ jobs:
     - name: Configurar Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10' # Atualizei para 3.10 (mais estável)
+        python-version: '3.10'
 
     - name: Instalar Dependências
       run: |
@@ -34,7 +34,11 @@ jobs:
         # Adiciona o relatório gerado
         git add Relatorio_Oficial.xlsx
         
-        # Só commita se houver mudanças
+        # Commita se houver mudanças
         git commit -m "📊 Relatório V164 Atualizado: $(date)" || echo "Sem mudanças no relatório"
-        git push
         
+        # PULO DO GATO: Puxa as atualizações do bot principal ANTES de enviar o Excel
+        git pull --rebase origin main
+        
+        # Envia para o GitHub
+        git push
