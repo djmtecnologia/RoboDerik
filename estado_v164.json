@@ -1,18 +1,7 @@
 {
-    "banca_atual": 59.98325780445854,
+    "banca_atual": 59.99855003432129,
     "pico_banca": 60.0,
-    "posicao_aberta": {
-        "symbol": "ADA-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "entry": 0.2752786874771118,
-        "sl": 0.2765179095179524,
-        "size_usd": 8.99748867066878,
-        "initial_size_usd": 8.99748867066878,
-        "adds": 0,
-        "data": "18/02/2026 23:37:50"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
@@ -130,8 +119,17 @@
             "lucro": -0.0,
             "motivo": "\u2705 TP Trap",
             "adds": 0
+        },
+        {
+            "data": "18/02/2026 23:38:49",
+            "symbol": "ADA-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "lucro": 0.02,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "18/02/2026",
-    "pnl_hoje": -0.01674219554146364
+    "pnl_hoje": -0.0014499656787155084
 }
