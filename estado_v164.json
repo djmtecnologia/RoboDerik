@@ -1,7 +1,18 @@
 {
     "banca_atual": 59.94925801034884,
     "pico_banca": 60.00264559322432,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "entry": 82.57398223876953,
+        "sl": 82.94157926180725,
+        "size_usd": 8.992388701552326,
+        "initial_size_usd": 8.992388701552326,
+        "adds": 0,
+        "data": "19/02/2026 04:23:50"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
