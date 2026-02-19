@@ -1,18 +1,7 @@
 {
-    "banca_atual": 59.99526765857538,
-    "pico_banca": 60.0138373829102,
-    "posicao_aberta": {
-        "symbol": "SOL-USD",
-        "strat": "TREND",
-        "side": "sell",
-        "macro": "WINTER",
-        "entry": 81.68854522705078,
-        "sl": 82.02941198243478,
-        "size_usd": 8.999290148786306,
-        "initial_size_usd": 8.999290148786306,
-        "adds": 0,
-        "data": "19/02/2026 06:25:52"
-    },
+    "banca_atual": 60.07003074294354,
+    "pico_banca": 60.07003074294354,
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
@@ -382,8 +371,22 @@
             "lucro": -0.01,
             "motivo": "\u2705 TP Fast (EMA20)",
             "adds": 0
+        },
+        {
+            "data": "19/02/2026 11:50:55",
+            "symbol": "SOL-USD",
+            "strat": "TREND",
+            "side": "sell",
+            "criterio": "N/A",
+            "entrada": 81.68854522705078,
+            "saida": 80.84652709960938,
+            "tp": 0.0,
+            "sl": 82.02941198243478,
+            "lucro": 0.07,
+            "motivo": "\u2705 TP Fast (EMA20)",
+            "adds": 0
         }
     ],
     "data_hoje": "19/02/2026",
-    "pnl_hoje": -0.0033142109709544208
+    "pnl_hoje": 0.07144887339720217
 }
