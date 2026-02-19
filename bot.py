@@ -43,20 +43,20 @@ SYMBOL_MAP = {
 
 # Configuração de Tempo
 TIMEFRAME = "15m" 
-ALAVANCAGEM = 1 # Spot ou ajuste na exchange (O bot calcula o lote)
+ALAVANCAGEM = 1 
 
 # GESTÃO DE RISCO V164
-RISK_SUMMER = 0.10    # 10% da banca em Tendência de Alta Limpa (Summer)
-RISK_WINTER = 0.015   # 1,5% da banca em Mercado de Baixa (Winter/Defesa)
-MAX_ADDS = 1          # Máximo de 1 piramidagem (Dobra a mão 1 vez)
+RISK_SUMMER = 0.10    # 10% da banca em Tendência de Alta Limpa
+RISK_WINTER = 0.015   # 1,5% da banca em Mercado de Baixa
+MAX_ADDS = 1          # Máximo de 1 piramidagem 
+
+# ZONA DE RUÍDO (BUFFER) PARA EVITAR VIOLINADAS DE MESMA VELA
+BUFFER_PCT = 0.002    # 0.2% de margem acima/abaixo da média
 
 # ARQUIVO DE ESTADO
 STATE_FILE = "estado_v164.json"
 
-# --- FUNÇÕES DE ESTADO (CRIAÇÃO E LEITURA) ---
-
 def inicializar_arquivo():
-    """Cria o arquivo JSON inicial se ele não existir."""
     if not os.path.exists(STATE_FILE):
         dados_iniciais = {
             "banca_atual": 60.0,      
@@ -74,10 +74,8 @@ def inicializar_arquivo():
             print(f"❌ Erro crítico ao criar arquivo: {e}")
 
 def carregar_estado():
-    """Lê o arquivo JSON."""
     if not os.path.exists(STATE_FILE):
         inicializar_arquivo()
-    
     try:
         with open(STATE_FILE, "r") as f:
             return json.load(f)
@@ -86,29 +84,21 @@ def carregar_estado():
         return None
 
 def salvar_estado(estado):
-    """Grava o estado no JSON."""
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(estado, f, indent=4)
     except Exception as e:
         print(f"❌ Erro ao salvar: {e}")
 
-# --- MOTOR DE DADOS ---
-
 def obter_dados_v164(symbol):
     try:
         df = yf.download(symbol, period="60d", interval=TIMEFRAME, progress=False)
-        
-        if df.empty or len(df) < 805: 
-            return None
-        
-        if isinstance(df.columns, pd.MultiIndex): 
-            df.columns = df.columns.get_level_values(0)
+        if df.empty or len(df) < 805: return None
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         
         df = df.rename(columns={"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"})
         df.columns = [c.lower() for c in df.columns]
 
-        # --- INDICADORES TÉCNICOS V164 ---
         df['ema20'] = ta.ema(df['close'], length=20)
         df['ema50'] = ta.ema(df['close'], length=50)   
         df['ema200'] = ta.ema(df['close'], length=200) 
@@ -124,14 +114,10 @@ def obter_dados_v164(symbol):
 
         return df.iloc[-1]
     except Exception as e:
-        print(f"❌ Erro ao baixar {symbol}: {e}")
         return None
-
-# --- LÓGICA PRINCIPAL ---
 
 def run_bot():
     inicializar_arquivo()
-    
     hora_atual = obter_data_hora_br()
     print(f"\n💎 ROBODERIK V164 (ASYMMETRIC COMPOUNDER) - {hora_atual}")
     
@@ -150,8 +136,6 @@ def run_bot():
     if estado["posicao_aberta"]:
         pos = estado["posicao_aberta"]
         symbol = pos["symbol"]
-        print(f"👀 Monitorando {symbol} ({pos['strat']} - {pos['macro']})...")
-        
         dados = obter_dados_v164(symbol)
         
         if dados is not None:
@@ -168,36 +152,35 @@ def run_bot():
             else:
                 lucro_unrealized_pct = (pos['entry'] - atual) / pos['entry']
 
-            print(f"👀 {symbol} ({pos['strat']}) | PnL Unrealized: {lucro_unrealized_pct*100:.2f}% | Adds: {pos['adds']}")
+            print(f"👀 Monitorando {symbol} ({pos['strat']}) | PnL Unrealized: {lucro_unrealized_pct*100:.2f}%")
 
-            MIN_PROFIT_PCT = 0.003
-
-            # --- SAÍDAS ---
+            # --- A. SAÍDAS ASSIMÉTRICAS COM BUFFER DE RUÍDO ---
             if pos['strat'] == 'TREND':
                 if pos['side'] == 'buy' and pos['macro'] == "SUMMER":
-                    if atual < ema50 and lucro_unrealized_pct > MIN_PROFIT_PCT:
-                        fechou = True; motivo = "✅ TP Deep Trend (EMA50)"
+                    # Exige que perca a EMA 50 por uma margem clara (0.2%) para sair
+                    if atual < (ema50 * (1 - BUFFER_PCT)):
+                        fechou = True; motivo = "✅ TP Deep Trend (Rompeu EMA50)"
                 else:
-                    if pos['side'] == 'buy' and atual < ema20 and lucro_unrealized_pct > MIN_PROFIT_PCT:
-                        fechou = True; motivo = "✅ TP Fast (EMA20)"
-                    elif pos['side'] == 'sell' and atual > ema20 and lucro_unrealized_pct > MIN_PROFIT_PCT:
-                        fechou = True; motivo = "✅ TP Fast (EMA20)"
+                    if pos['side'] == 'buy' and atual < (ema20 * (1 - BUFFER_PCT)):
+                        fechou = True; motivo = "⚠️ Saída Dinâmica (Perdeu EMA20)"
+                    elif pos['side'] == 'sell' and atual > (ema20 * (1 + BUFFER_PCT)):
+                        fechou = True; motivo = "⚠️ Saída Dinâmica (Rompeu EMA20)"
             
             elif pos['strat'] == 'TRAP':
                 target = ema50
-                if pos['side'] == 'buy' and float(dados['high']) >= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
-                    fechou = True; motivo = "✅ TP Trap"
-                elif pos['side'] == 'sell' and float(dados['low']) <= target and lucro_unrealized_pct > MIN_PROFIT_PCT:
-                    fechou = True; motivo = "✅ TP Trap"
+                if pos['side'] == 'buy' and float(dados['high']) >= target:
+                    fechou = True; motivo = "✅ TP Trap (Alvo Atingido)"
+                elif pos['side'] == 'sell' and float(dados['low']) <= target:
+                    fechou = True; motivo = "✅ TP Trap (Alvo Atingido)"
 
-            # --- STOP LOSS ---
+            # --- B. STOP LOSS TÉCNICO MAXIMO ---
             if not fechou:
                 if pos['side'] == 'buy' and atual <= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
                 elif pos['side'] == 'sell' and atual >= pos['sl']:
                     fechou = True; motivo = "⛔ STOP LOSS"
 
-            # --- PIRAMIDAGEM ---
+            # --- C. PIRAMIDAGEM ---
             if not fechou and pos['strat'] == 'TREND' and pos['macro'] == "SUMMER" and pos['adds'] < MAX_ADDS:
                 if pos['side'] == 'buy' and lucro_unrealized_pct > 0.05:
                     add_usd = pos['initial_size_usd'] 
@@ -209,24 +192,21 @@ def run_bot():
                         pos['entry'] = new_entry
                         pos['adds'] += 1
                         pos['sl'] = new_entry - (atr * 2.0)
-                        
-                        print(f"🔥 PIRAMIDAGEM! Novo PM: {new_entry:.2f}")
                         salvar_estado(estado)
 
-            # --- FECHAMENTO ---
+            # --- D. FECHAMENTO COM TAXAS REAIS ---
             if fechou:
-                if pos['side'] == 'buy':
-                    pnl_bruto = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
-                else:
-                    pnl_bruto = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
+                # Calcula Lucro Bruto
+                if pos['side'] == 'buy': pnl_bruto = (atual - pos['entry']) / pos['entry'] * pos['size_usd']
+                else: pnl_bruto = (pos['entry'] - atual) / pos['entry'] * pos['size_usd']
                 
+                # Desconta Taxa Binance Spot (0.1% Entrada + 0.1% Saída) = 0.2%
                 taxa_corretora_usd = pos['size_usd'] * 0.002
                 pnl_final = pnl_bruto - taxa_corretora_usd
 
                 estado['banca_atual'] += pnl_final
                 estado['pnl_hoje'] += pnl_final
                 
-                # ---> DADOS ADICIONADOS PARA O RELATÓRIO EXCEL AQUI <---
                 log_trade = {
                     "data": obter_data_hora_br(),
                     "symbol": symbol,
@@ -242,16 +222,12 @@ def run_bot():
                     "adds": pos['adds']
                 }
                 estado['historico_trades'].append(log_trade)
-                
-                if len(estado['historico_trades']) > 50:
-                    estado['historico_trades'].pop(0)
+                if len(estado['historico_trades']) > 50: estado['historico_trades'].pop(0)
 
                 estado['posicao_aberta'] = None
+                if estado['banca_atual'] > estado['pico_banca']: estado['pico_banca'] = estado['banca_atual']
                 
-                if estado['banca_atual'] > estado['pico_banca']:
-                    estado['pico_banca'] = estado['banca_atual']
-                
-                print(f"✨ TRADE FECHADO: {motivo} | PnL Bruto: ${pnl_bruto:.2f} | PnL Líquido (C/ Taxa): ${pnl_final:.2f}")
+                print(f"✨ TRADE FECHADO: {motivo} | PnL Bruto: ${pnl_bruto:.2f} | PnL c/ Taxa: ${pnl_final:.2f}")
                 salvar_estado(estado)
                 return
 
@@ -276,22 +252,24 @@ def run_bot():
             
             signal = None; side = ""; strat = ""; risk_profile = RISK_WINTER
             criterio_desc = ""
-            tp_alvo_inicial = 0.0 # Guardando a EMA do momento da entrada para o Relatório
+            tp_alvo_inicial = 0.0 
 
             if adx > 20:
                 if macro == "SUMMER":
-                    if close > ema20:
+                    # BUFFER: Exige que o preço esteja 0.2% ACIMA da Média para confirmar a força
+                    if close > (ema20 * (1 + BUFFER_PCT)):
                         signal = True; side = "buy"; strat = "TREND"
                         risk_profile = RISK_SUMMER
                         criterio_desc = f"SUMMER TREND | ADX {adx:.1f} > 20"
-                        tp_alvo_inicial = ema50 # O Alvo no Summer é a EMA 50
+                        tp_alvo_inicial = ema50 
                 
                 elif macro == "WINTER":
-                    if close < ema20:
+                    # BUFFER: Exige que o preço esteja 0.2% ABAIXO da Média para confirmar fraqueza
+                    if close < (ema20 * (1 - BUFFER_PCT)):
                         signal = True; side = "sell"; strat = "TREND"
                         risk_profile = RISK_WINTER
                         criterio_desc = f"WINTER TREND SHORT | ADX {adx:.1f} > 20"
-                        tp_alvo_inicial = ema20 # O Alvo no Winter é a EMA 20
+                        tp_alvo_inicial = ema20
 
             if not signal and adx < 30:
                 if bias == "BULL" and float(row['low']) <= float(row['bb_l']):
@@ -328,7 +306,6 @@ def run_bot():
                 if pos_size_usd > estado['banca_atual'] * max_alloc:
                     pos_size_usd = estado['banca_atual'] * max_alloc
 
-                # ---> DADOS ADICIONADOS PARA O ESTADO JSON AQUI <---
                 estado['posicao_aberta'] = {
                     "symbol": symbol,
                     "strat": strat,
@@ -358,4 +335,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Erro fatal: {e}")
         traceback.print_exc()
-            
