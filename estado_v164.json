@@ -1,18 +1,7 @@
 {
-    "banca_atual": 59.994810241364895,
+    "banca_atual": 59.94925801034884,
     "pico_banca": 60.00264559322432,
-    "posicao_aberta": {
-        "symbol": "SOL-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "entry": 82.11650085449219,
-        "sl": 82.4936821089466,
-        "size_usd": 8.999221536204734,
-        "initial_size_usd": 8.999221536204734,
-        "adds": 0,
-        "data": "19/02/2026 03:16:52"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
@@ -346,8 +335,17 @@
             "lucro": -0.0,
             "motivo": "\u2705 TP Trap",
             "adds": 0
+        },
+        {
+            "data": "19/02/2026 04:20:48",
+            "symbol": "SOL-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "lucro": -0.05,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "19/02/2026",
-    "pnl_hoje": -0.003771628181436274
+    "pnl_hoje": -0.04932385919748881
 }
