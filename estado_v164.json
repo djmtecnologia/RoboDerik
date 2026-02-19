@@ -1,18 +1,7 @@
 {
-    "banca_atual": 59.9904351536915,
+    "banca_atual": 59.991906492902835,
     "pico_banca": 60.0,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "entry": 66749.328125,
-        "sl": 67083.30598285036,
-        "size_usd": 8.998565273053725,
-        "initial_size_usd": 8.998565273053725,
-        "adds": 0,
-        "data": "18/02/2026 22:53:48"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
@@ -49,8 +38,17 @@
             "lucro": -0.0,
             "motivo": "\u2705 TP Fast (EMA20)",
             "adds": 0
+        },
+        {
+            "data": "18/02/2026 22:55:53",
+            "symbol": "BTC-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "lucro": 0.0,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "18/02/2026",
-    "pnl_hoje": -0.009564846308498524
+    "pnl_hoje": -0.008093507097165631
 }
