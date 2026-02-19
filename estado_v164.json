@@ -1,7 +1,18 @@
 {
     "banca_atual": 59.99432058781618,
     "pico_banca": 60.0,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BTC-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "entry": 66777.6328125,
+        "sl": 67132.70872672346,
+        "size_usd": 8.999148088172428,
+        "initial_size_usd": 8.999148088172428,
+        "adds": 0,
+        "data": "18/02/2026 22:46:51"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
