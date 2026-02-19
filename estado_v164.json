@@ -1,18 +1,7 @@
 {
-    "banca_atual": 59.99855003432129,
+    "banca_atual": 59.998404880197064,
     "pico_banca": 60.0,
-    "posicao_aberta": {
-        "symbol": "BNB-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "entry": 605.4840087890625,
-        "sl": 607.5480245874704,
-        "size_usd": 8.999782505148193,
-        "initial_size_usd": 8.999782505148193,
-        "adds": 0,
-        "data": "18/02/2026 23:39:56"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
@@ -139,8 +128,17 @@
             "lucro": 0.02,
             "motivo": "\u2705 TP Trap",
             "adds": 0
+        },
+        {
+            "data": "18/02/2026 23:40:49",
+            "symbol": "BNB-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "lucro": -0.0,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "18/02/2026",
-    "pnl_hoje": -0.0014499656787155084
+    "pnl_hoje": -0.0015951198029385584
 }
