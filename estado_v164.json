@@ -1,7 +1,20 @@
 {
     "banca_atual": 59.52163028135477,
     "pico_banca": 60.07003074294354,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ADA-USD",
+        "strat": "TREND",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "SUMMER TREND | ADX 24.0 > 20",
+        "entry": 0.2789784371852875,
+        "tp": 0.2751546645770838,
+        "sl": 0.2766629528225093,
+        "size_usd": 17.85648908440643,
+        "initial_size_usd": 17.85648908440643,
+        "adds": 0,
+        "data": "20/02/2026 12:04:51"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:48:52",
