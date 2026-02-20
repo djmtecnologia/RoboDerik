@@ -1,30 +1,8 @@
 {
-    "banca_atual": 59.63727515009898,
+    "banca_atual": 59.52163028135477,
     "pico_banca": 60.07003074294354,
-    "posicao_aberta": {
-        "symbol": "ETH-USD",
-        "strat": "TREND",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "WINTER TREND SHORT | ADX 28.6 > 20",
-        "entry": 1952.8421630859375,
-        "tp": 1961.4488875168965,
-        "sl": 1962.9082194405123,
-        "size_usd": 8.945591272514847,
-        "initial_size_usd": 8.945591272514847,
-        "adds": 0,
-        "data": "20/02/2026 08:15:51"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "18/02/2026 22:45:47",
-            "symbol": "BNB-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "lucro": -0.01,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "18/02/2026 22:48:52",
             "symbol": "BTC-USD",
@@ -510,8 +488,22 @@
             "lucro": -0.14,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "20/02/2026 12:03:52",
+            "symbol": "ETH-USD",
+            "strat": "TREND",
+            "side": "sell",
+            "criterio": "WINTER TREND SHORT | ADX 28.6 > 20",
+            "entrada": 1952.8421630859375,
+            "saida": 1974.1820068359375,
+            "tp": 1961.4488875168965,
+            "sl": 1962.9082194405123,
+            "lucro": -0.12,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "20/02/2026",
-    "pnl_hoje": -0.23513616055626607
+    "pnl_hoje": -0.3507810293004757
 }
