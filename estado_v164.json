@@ -1,20 +1,7 @@
 {
-    "banca_atual": 59.83731946431368,
+    "banca_atual": 59.77233618655967,
     "pico_banca": 60.07003074294354,
-    "posicao_aberta": {
-        "symbol": "ADA-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
-        "entry": 0.2748925983905792,
-        "tp": 0.2730857163088737,
-        "sl": 0.2763067540979738,
-        "size_usd": 8.975597919647052,
-        "initial_size_usd": 8.975597919647052,
-        "adds": 0,
-        "data": "20/02/2026 03:01:51"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
@@ -482,8 +469,22 @@
             "lucro": -0.07,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "20/02/2026 06:18:50",
+            "symbol": "ADA-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+            "entrada": 0.2748925983905792,
+            "saida": 0.2763330340385437,
+            "tp": 0.2730857163088737,
+            "sl": 0.2763067540979738,
+            "lucro": -0.06,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "20/02/2026",
-    "pnl_hoje": -0.03509184634156631
+    "pnl_hoje": -0.10007512409557849
 }
