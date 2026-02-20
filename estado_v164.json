@@ -1,7 +1,20 @@
 {
     "banca_atual": 59.872411310655245,
     "pico_banca": 60.07003074294354,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+        "entry": 1957.4061279296875,
+        "tp": 1944.227266306989,
+        "sl": 1970.2630382724528,
+        "size_usd": 8.980861696598286,
+        "initial_size_usd": 8.980861696598286,
+        "adds": 0,
+        "data": "19/02/2026 22:03:00"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 22:45:47",
