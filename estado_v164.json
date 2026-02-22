@@ -1,7 +1,20 @@
 {
     "banca_atual": 59.27538633913784,
     "pico_banca": 60.07003074294354,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ADA-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "WINTER TREND SHORT | ADX 26.6 > 20",
+        "entry": 0.2735823094844818,
+        "tp": 0.27585334112446347,
+        "sl": 0.27452039414819995,
+        "size_usd": 8.891307950870676,
+        "initial_size_usd": 8.891307950870676,
+        "adds": 0,
+        "data": "22/02/2026 09:42:50"
+    },
     "historico_trades": [
         {
             "data": "18/02/2026 23:13:56",
