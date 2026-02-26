@@ -1,30 +1,8 @@
 {
-    "banca_atual": 59.96842537552966,
+    "banca_atual": 59.87710054264918,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "strat": "TRAP",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
-        "entry": 67658.1171875,
-        "tp": 68138.78546036944,
-        "sl": 67205.7014660595,
-        "size_usd": 8.995263806329449,
-        "initial_size_usd": 8.995263806329449,
-        "adds": 0,
-        "data": "26/02/2026 12:03:06"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "19/02/2026 00:38:51",
-            "symbol": "BNB-USD",
-            "strat": "TRAP",
-            "side": "sell",
-            "lucro": -0.0,
-            "motivo": "\u2705 TP Trap",
-            "adds": 0
-        },
         {
             "data": "19/02/2026 00:40:51",
             "symbol": "BNB-USD",
@@ -620,8 +598,22 @@
             "lucro": -0.15,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "26/02/2026 12:18:55",
+            "symbol": "BTC-USD",
+            "strat": "TRAP",
+            "side": "buy",
+            "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+            "entrada": 67658.1171875,
+            "saida": 67106.53125,
+            "tp": 68138.78546036944,
+            "sl": 67205.7014660595,
+            "lucro": -0.09,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "26/02/2026",
-    "pnl_hoje": 1.0928553844850932
+    "pnl_hoje": 1.0015305516046147
 }
