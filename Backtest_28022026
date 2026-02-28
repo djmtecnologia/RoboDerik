@@ -1,0 +1,516 @@
+import requests
+import pandas as pd
+import pandas_ta as ta
+import numpy as np
+from datetime import datetime
+import time
+import warnings
+import random
+
+warnings.filterwarnings('ignore')
+
+# --- CONFIGURAÇÕES GERAIS ---
+DATA_INICIO = "2020-01-01"
+DATA_FIM    = "2026-02-19"
+BANCA_INICIAL = 60.00
+TIMEFRAME = "15m"
+
+# ⚙️ GESTÃO QUANTITATIVA INSTITUCIONAL
+ALAVANCAGEM = 3.0      
+MAX_POSICOES = 3       
+MAX_ACCOUNT_MARGIN = 0.35  
+
+# 🚀 FÍSICA REAL DE MERCADO (PESSIMISMO ABSOLUTO)
+SLIPPAGE = 0.0007      
+TAXA_CORRETORA = 0.0004 
+TOXIC_FILL_PROB = 0.35 # 35% de chance do spread abrir contra você
+TOXIC_PENALTY = 0.0015 # 0.15% extra de custo no Toxic Fill
+
+COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"]
+
+print(f"⏳ Iniciando Motor V3700 (The Robust Walk-Forward Engine) | Alavancagem: {ALAVANCAGEM}x")
+
+# --- MÓDULOS DE MATEMÁTICA INSTITUCIONAL ---
+def expected_losing_streak(winrate, trades=500):
+    if winrate <= 0.01 or winrate >= 0.99: return 1
+    return max(1, int(np.log(trades) / -np.log(1 - winrate)))
+
+def equity_volatility(equity_curve, window=40):
+    if len(equity_curve) < window + 1: return None
+    eq = np.array(equity_curve[-window:])
+    returns = np.diff(eq) / (eq[:-1] + 1e-9)
+    return np.std(returns)
+
+def equity_vol_scalar(eq_vol, target_vol=0.015):
+    if eq_vol is None or eq_vol == 0: return 1.0
+    return np.clip(target_vol / eq_vol, 0.5, 1.5) 
+
+# --- ☢️ MONTE CARLO INSTITUCIONAL ---
+def monte_carlo_block_bootstrap(trades_pct, initial_capital, sims=2000):
+    trades_pct = np.array(trades_pct)
+    n_trades = len(trades_pct)
+    results = []
+    
+    if n_trades < 20:
+        return {"median_final": initial_capital, "worst_final": initial_capital, "ruin_prob": 0, "median_dd": 0, "worst_dd": 0}
+        
+    for _ in range(sims):
+        equity = initial_capital
+        peak = equity
+        max_dd = 0
+        
+        sampled_trades = []
+        while len(sampled_trades) < n_trades:
+            # Blocos maiores simulam clusters reais de perdas em crypto
+            block_size = np.random.choice([10, 20, 30])
+            idx = np.random.randint(0, max(1, n_trades - block_size + 1))
+            sampled_trades.extend(trades_pct[idx:idx + block_size])
+            
+        sampled_trades = sampled_trades[:n_trades] 
+        
+        for pnl_pct in sampled_trades:
+            if np.random.rand() < 0.005: 
+                pnl_pct = pnl_pct * np.random.uniform(3.0, 6.0) if pnl_pct < 0 else pnl_pct * 0.1
+                
+            equity *= (1 + pnl_pct)
+            
+            peak = max(peak, equity)
+            if peak > 0:
+                dd = (peak - equity) / peak
+                max_dd = max(max_dd, dd)
+            
+            if equity <= initial_capital * 0.05: 
+                equity = 0
+                break
+                
+        results.append((equity, max_dd))
+
+    finals = [r[0] for r in results]
+    dds = [r[1] for r in results]
+    
+    return {
+        "median_final": np.median(finals),
+        "worst_final": np.min(finals),
+        "ruin_prob": np.mean(np.array(finals) <= initial_capital * 0.10), 
+        "median_dd": np.median(dds),
+        "worst_dd": np.max(dds)
+    }
+
+# --- 1. DATA LAYER ---
+def fetch_binance_data(symbol, start_date_str, end_date_str):
+    interval = TIMEFRAME
+    limit = 1000
+    urls = [
+        "https://fapi.binance.com/fapi/v1/klines",
+        "https://api.binance.com/api/v3/klines",
+        "https://data-api.binance.vision/api/v3/klines"
+    ]
+    start_ts = int(datetime.strptime(start_date_str, "%Y-%m-%d").timestamp() * 1000)
+    end_ts = int(datetime.strptime(end_date_str, "%Y-%m-%d").timestamp() * 1000)
+    
+    print(f"📥 Baixando {symbol} (15m)...", end="\n")
+    all_klines = []
+    current_start = start_ts
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    for base_url in urls:
+        success = False
+        while True:
+            params = {"symbol": symbol, "interval": interval, "startTime": current_start, "limit": limit}
+            try:
+                r = requests.get(base_url, params=params, headers=headers, timeout=(5, 15))
+                if r.status_code in [429, 451]: break 
+                elif r.status_code != 200: break 
+                d = r.json()
+                if not d: 
+                    success = True
+                    break
+                chunk = [x for x in d if x[0] <= end_ts]
+                if not chunk: 
+                    success = True
+                    break
+                all_klines.extend(chunk)
+                current_start = chunk[-1][0] + 1
+                if current_start > end_ts: 
+                    success = True
+                    break
+                time.sleep(0.01) 
+            except Exception:
+                break 
+        if success and len(all_klines) > 0:
+            break 
+            
+    if not all_klines: return None
+        
+    print(f"✅ {symbol} concluído: {len(all_klines)} velas de 15m.")
+    df = pd.DataFrame(all_klines, columns=["open_time", "open", "high", "low", "close", "v", "ct", "qv", "tr", "tb", "tq", "ig"])
+    df["date"] = pd.to_datetime(df["open_time"], unit="ms")
+    for c in ["open", "high", "low", "close", "v"]: df[c] = pd.to_numeric(df[c], errors='coerce')
+    df.set_index("date", inplace=True)
+    return df
+
+# --- 2. MULTI-TIMEFRAME ENGINE (ANTI-OVERFITTING & NO-LOOKAHEAD) ---
+def calcular_features(df):
+    df = df.copy()
+    
+    # --- MACRO ENGINE (4 HORAS) ---
+    # Resample natural da biblioteca Pandas
+    df_4h = df.resample('4h', label='right', closed='right').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'v': 'sum'}).dropna()
+    c_4h = df_4h['close']
+    
+    df_4h['ema200_4h'] = ta.ema(c_4h, length=200)
+    atr_4h = ta.atr(df_4h['high'], df_4h['low'], c_4h, length=14)
+    
+    df_4h['direction'] = abs(c_4h - c_4h.shift(20))
+    df_4h['noise'] = abs(c_4h.diff()).rolling(20).sum()
+    df_4h['efficiency_ratio'] = df_4h['direction'] / (df_4h['noise'] + 1e-9)
+    
+    # 🚀 AJUSTE 1: A CURA DO VAZAMENTO TEMPORAL (Lookahead Bias Aniquilado)
+    # Movemos matematicamente o Index para o exato segundo em que a vela de 4H FECHOU.
+    # Assim, o .ffill() só vai entregar a informação para a vela de 15m SEGUINTE.
+    df_4h.index = df_4h.index + pd.Timedelta(hours=4)
+    
+    # Separando o sinal estrito (Kaufman Efficiency)
+    df_4h['regime_state'] = 0 
+    df_4h.loc[df_4h['efficiency_ratio'] > 0.45, 'regime_state'] = 1 # TREND PURO
+    df_4h.loc[df_4h['efficiency_ratio'] < 0.35, 'regime_state'] = 2 # FADE PURO
+    
+    cols_to_join = ['ema200_4h', 'regime_state']
+    # O Left Join distribuirá os dados 4H estritamente no futuro de 15m.
+    df = df.join(df_4h[cols_to_join], how='left').ffill()
+    
+    # --- MICRO ENGINE (15 MINUTOS) ---
+    # Limpeza absoluta de lixo estatístico. Foco na Microestrutura Pura.
+    c = df['close']; h = df['high']; l = df['low']; o = df['open']; v = df['v']
+    df['ema20'] = ta.ema(c, length=20)
+    df['atr'] = ta.atr(h, l, c, length=14)
+    
+    df['candle_range'] = h - l
+    df['body_size'] = abs(c - o)
+    df['upper_wick'] = h - df[['close', 'open']].max(axis=1)
+    df['lower_wick'] = df[['close', 'open']].min(axis=1) - l
+    
+    df['upper_ratio'] = df['upper_wick'] / (df['candle_range'] + 1e-9)
+    df['lower_ratio'] = df['lower_wick'] / (df['candle_range'] + 1e-9)
+    df['vol_ma'] = v.rolling(30).mean()
+    
+    # STOP ESTRUTURAL BASE
+    df['rolling_high_20'] = h.rolling(20).max()
+    df['rolling_low_20'] = l.rolling(20).min()
+    
+    # SWEEP (Caça de Liquidez Institucional)
+    df['sweep_up'] = (h > df['rolling_high_20'].shift(1)) & (c < df['rolling_high_20'].shift(1))
+    df['sweep_down'] = (l < df['rolling_low_20'].shift(1)) & (c > df['rolling_low_20'].shift(1))
+    
+    # ABSORPTION (Confirmação de Rejeição de Varejo)
+    df['absorption_long'] = df['sweep_down'] & (c > o) & (v > df['vol_ma'] * 1.5) & (df['lower_ratio'] > 0.40)
+    df['absorption_short'] = df['sweep_up'] & (c < o) & (v > df['vol_ma'] * 1.5) & (df['upper_ratio'] > 0.40)
+    
+    # PULLBACK (A Resposta Saudável à Média)
+    df['pullback_long'] = (c > df['ema20']) & (l <= df['ema20']) & (df['lower_ratio'] > 0.35) & (c > o)
+    df['pullback_short'] = (c < df['ema20']) & (h >= df['ema20']) & (df['upper_ratio'] > 0.35) & (c < o)
+
+    df.dropna(inplace=True)
+    return df
+
+# --- 3. EXECUTION ENGINE ---
+def run_backtest():
+    raw_datasets = {}
+    for coin in COINS:
+        df = fetch_binance_data(coin, DATA_INICIO, DATA_FIM)
+        if df is not None: raw_datasets[coin] = calcular_features(df)
+        
+    if not raw_datasets: 
+        print("\n❌ FALHA CRÍTICA: Dados não encontrados.")
+        return
+
+    print("🧠 Calculando Matriz Macro (Energy Transition)...")
+    
+    master_closes = pd.DataFrame({coin: raw_datasets[coin]['close'] for coin in COINS if coin in raw_datasets}).ffill()
+    master_returns = master_closes.resample('4h').last().pct_change().fillna(0)
+    
+    btc_returns = master_returns.get('BTCUSDT')
+    if btc_returns is not None:
+        market_energy = master_returns.abs().mean(axis=1).rolling(48).mean()
+        energy_mean = market_energy.rolling(240).mean()
+        energy_std  = market_energy.rolling(240).std()
+        energy_z = (market_energy - energy_mean) / (energy_std + 1e-9)
+        
+        # Filtro de energia básico e abrangente (Evita overfit em Bull/Bear Market)
+        energy_filter_series = (energy_z > -0.5) & (energy_z < 1.5)
+    else:
+        energy_filter_series = pd.Series(True, index=master_closes.index)
+
+    energy_filter_series = energy_filter_series.reindex(master_closes.index, method='ffill')
+
+    datasets = {coin: raw_datasets[coin].to_dict('index') for coin in COINS if coin in raw_datasets}
+    all_ts = set()
+    for coin in datasets: all_ts.update(datasets[coin].keys())
+    timestamps = sorted(list(all_ts))
+    
+    banca = BANCA_INICIAL
+    historico_global = []
+    equity_curve = [BANCA_INICIAL]
+    annual_stats = {year: {'start': 0, 'end': 0, 'pnl': 0, 'trades': 0, 'wins': 0} for year in range(2020, 2027)}
+    posicoes_abertas = {} 
+    
+    diagnostics = {
+        "toxic_fills_executed": 0,
+        "missed_limit_fill": 0,
+        "pessimistic_intrabar_stops": 0
+    }
+
+    print("\n⚙️ Simulando Matching Engine (V3700 Robust Walk-Forward)...")
+
+    for i in range(2, len(timestamps)-1):
+        ts_prev2 = timestamps[i-2]; ts_prev = timestamps[i-1]; ts_atual = timestamps[i]  
+        current_year = ts_atual.year
+        if annual_stats[current_year]['start'] == 0: annual_stats[current_year]['start'] = banca
+        if ts_prev.year != ts_atual.year: annual_stats[ts_prev.year]['end'] = banca
+
+        peak_equity = max(equity_curve)
+        dd = (peak_equity - banca) / peak_equity
+        dd_scalar = np.clip(1.0 - (dd / 0.25), 0.25, 1.0)
+        
+        # Cooldown Físico (Proteção Psicológica da Conta)
+        cooldown_scalar = 1.0
+        if len(historico_global) >= 5:
+            last_5 = historico_global[-5:]
+            if sum(1 for t in last_5 if t['lucro'] < 0) >= 3:
+                cooldown_scalar = 0.5 
+        
+        # --- FECHAMENTO DAS POSIÇÕES (FÍSICA PESSIMISTA) ---
+        for symb in list(posicoes_abertas.keys()):
+            if ts_atual not in datasets[symb]: continue
+            row_atual = datasets[symb][ts_atual]
+            c_open = row_atual['open']; c_high = row_atual['high']; c_low = row_atual['low']; c_close = row_atual['close']
+            pos = posicoes_abertas[symb]
+            fechou = False; motivo = ""; exit_price_raw = 0.0
+            
+            banca_pre_trade = banca + pos['margem_usd'] 
+            current_sl = pos.get('trail_sl', pos['sl'])
+            
+            alavancagem_efetiva = pos['size_usd'] / pos['margem_usd']
+            liq_distance = 0.90 / alavancagem_efetiva 
+            liq_price_long = pos['entry'] * (1 - liq_distance)
+            liq_price_short = pos['entry'] * (1 + liq_distance)
+
+            profit_move = (c_close - pos['entry']) / pos['entry'] if pos['side'] == 'buy' else (pos['entry'] - c_close) / pos['entry']
+            profit_move_atr = profit_move / (row_atual['atr'] / pos['entry'])
+
+            tp_price = pos.get('tp_price', 0)
+
+            # 🚀 AJUSTE 2: PESSIMISMO INTRABAR (A Lei de Murphy)
+            if not fechou:
+                if pos['side'] == 'buy':
+                    hit_sl = c_low <= current_sl
+                    hit_liq = c_low <= liq_price_long
+                    hit_tp = (tp_price > 0 and c_high >= tp_price)
+                    
+                    if c_open <= liq_price_long: fechou = True; motivo = "LIQ GAP"; exit_price_raw = c_open
+                    elif c_open <= current_sl: fechou = True; motivo = "STOP GAP"; exit_price_raw = c_open
+                    elif hit_liq: fechou = True; motivo = "LIQUIDATION"; exit_price_raw = liq_price_long
+                    elif hit_sl and hit_tp: 
+                        fechou = True; motivo = "PESSIMISTIC SL"; exit_price_raw = current_sl
+                        diagnostics["pessimistic_intrabar_stops"] += 1
+                    elif hit_sl: fechou = True; motivo = "STOP HIT"; exit_price_raw = current_sl
+                    elif hit_tp: fechou = True; motivo = "TP HIT"; exit_price_raw = tp_price
+
+                elif pos['side'] == 'sell':
+                    hit_sl = c_high >= current_sl
+                    hit_liq = c_high >= liq_price_short
+                    hit_tp = (tp_price > 0 and c_low <= tp_price)
+                    
+                    if c_open >= liq_price_short: fechou = True; motivo = "LIQ GAP"; exit_price_raw = c_open
+                    elif c_open >= current_sl: fechou = True; motivo = "STOP GAP"; exit_price_raw = c_open
+                    elif hit_liq: fechou = True; motivo = "LIQUIDATION"; exit_price_raw = liq_price_short
+                    elif hit_sl and hit_tp: 
+                        fechou = True; motivo = "PESSIMISTIC SL"; exit_price_raw = current_sl
+                        diagnostics["pessimistic_intrabar_stops"] += 1
+                    elif hit_sl: fechou = True; motivo = "STOP HIT"; exit_price_raw = current_sl
+                    elif hit_tp: fechou = True; motivo = "TP HIT"; exit_price_raw = tp_price
+
+            # Trailing Stop tardio e suave para proteger Capital, não sufocar
+            if not fechou and pos['strat_type'] == 'TREND' and profit_move_atr >= 5.0:
+                dynamic_mult = 3.5
+                novo_trail = c_close - (row_atual['atr'] * dynamic_mult) if pos['side'] == 'buy' else c_close + (row_atual['atr'] * dynamic_mult)
+                if pos['side'] == 'buy': pos['trail_sl'] = max(current_sl, novo_trail)
+                else: pos['trail_sl'] = min(current_sl, novo_trail)
+
+            if fechou:
+                # Na saída não colocamos Noise Injection excessivo, apenas o Slippage orgânico.
+                exit_price = exit_price_raw * (1 - SLIPPAGE) if pos['side'] == 'buy' else exit_price_raw * (1 + SLIPPAGE)
+                
+                pnl_bruto = (exit_price - pos['entry']) / pos['entry'] * pos['size_usd'] if pos['side'] == 'buy' else (pos['entry'] - exit_price) / pos['entry'] * pos['size_usd']
+                fee_total = pos['size_usd'] * TAXA_CORRETORA * 2 
+                pnl_final = pnl_bruto - fee_total
+                
+                if "LIQUIDATION" in motivo: pnl_final = -pos['margem_usd'] 
+                
+                banca += pos['margem_usd'] + pnl_final
+                equity_curve.append(banca)
+                
+                pnl_pct = pnl_final / banca_pre_trade
+                historico_global.append({'data': ts_atual, 'strat': pos['strat'], 'lucro': pnl_final, 'pnl_pct': pnl_pct})
+                
+                annual_stats[ts_atual.year]['pnl'] += pnl_final
+                annual_stats[ts_atual.year]['trades'] += 1
+                if pnl_final > 0: annual_stats[ts_atual.year]['wins'] += 1
+                
+                del posicoes_abertas[symb]
+                if banca <= 0.10: return
+
+        # --- ABERTURA DE POSIÇÕES ---
+        if dd_scalar <= 0.25 or len(posicoes_abertas) >= MAX_POSICOES: continue
+
+        has_macro_energy = energy_filter_series.get(ts_prev, False)
+
+        for symb in COINS:
+            if symb in posicoes_abertas: continue
+            if ts_prev not in datasets[symb] or ts_atual not in datasets[symb]: continue
+            
+            row_closed = datasets[symb][ts_prev]
+            atual_open = datasets[symb][ts_atual]['open'] 
+            atual_low = datasets[symb][ts_atual]['low']
+            atual_high = datasets[symb][ts_atual]['high']
+            
+            regime = row_closed.get('regime_state', 0)
+            
+            signal = False; side = ""; strat = ""; strat_type = ""
+            
+            # 🔥 ESTRATÉGIA B: TRAP FADE (Reversão Absoluta no Sweep)
+            if regime == 2:
+                if row_closed.get('absorption_long', False):
+                    signal = True; side = "buy"; strat = "ABSORPTION_FADE"; strat_type = "FADE"
+                elif row_closed.get('absorption_short', False):
+                    signal = True; side = "sell"; strat = "ABSORPTION_FADE"; strat_type = "FADE"
+            
+            # 🔥 ESTRATÉGIA A: SMART TREND (Pullback a favor do Fluxo)
+            if not signal and regime == 1 and has_macro_energy:
+                if bool(row_closed.get('pullback_long', False)): 
+                    signal = True; side = "buy"; strat = "SMART_TREND"; strat_type = "TREND"
+                elif bool(row_closed.get('pullback_short', False)): 
+                    signal = True; side = "sell"; strat = "SMART_TREND"; strat_type = "TREND"
+
+            if signal:
+                # Filtro de Portfolio Direcional Físico
+                same_dir_count = sum(1 for p in posicoes_abertas.values() if p['side'] == side)
+                if same_dir_count >= 2: continue
+                
+                # 🚀 AJUSTE 3: TOXIC EXECUTION SIMULATION (O Teste de Fogo)
+                base_slippage = SLIPPAGE
+                if random.random() < TOXIC_FILL_PROB:
+                    base_slippage += TOXIC_PENALTY
+                    diagnostics["toxic_fills_executed"] += 1
+                
+                if strat_type == "TREND":
+                    entry_price = atual_open * (1 + base_slippage) if side == "buy" else atual_open * (1 - base_slippage)
+                else: # FADE Limitada Pessimista
+                    if side == "buy":
+                        limit_price = row_closed['close'] - (row_closed['atr'] * 0.2)
+                        # Se não tocou de forma folgada, descarta. Spread hostil.
+                        if atual_low <= limit_price * 0.999: entry_price = limit_price * (1 + base_slippage)
+                        else: 
+                            diagnostics["missed_limit_fill"] += 1
+                            continue 
+                    else:
+                        limit_price = row_closed['close'] + (row_closed['atr'] * 0.2)
+                        if atual_high >= limit_price * 1.001: entry_price = limit_price * (1 - base_slippage)
+                        else: 
+                            diagnostics["missed_limit_fill"] += 1
+                            continue
+                
+                # 🚀 AJUSTE 5: STOP ESTRUTURAL DE INVALIDAÇÃO REAL
+                if strat_type == "FADE":
+                    BASE_RISK = 0.02 # Aposta justa
+                    # Stop 0.2 ATR além da ponta da agulha de liquidez
+                    if side == "buy": sl_price = row_closed.get('rolling_low_20', entry_price) - (row_closed['atr'] * 0.2)
+                    else: sl_price = row_closed.get('rolling_high_20', entry_price) + (row_closed['atr'] * 0.2)
+                    
+                    tp_price = entry_price + (row_closed['atr'] * 2.5) if side == "buy" else entry_price - (row_closed['atr'] * 2.5)
+                else: # TREND
+                    BASE_RISK = 0.015 # Aposta cadenciada
+                    sl_dist = row_closed['atr'] * 2.5
+                    sl_price = entry_price - sl_dist if side == "buy" else entry_price + sl_dist
+                    tp_price = 0 # Trend não tem Take Profit, navega o Trailing Stop
+                    
+                dist_pct = abs(entry_price - sl_price) / entry_price
+                
+                risk_usd = banca * BASE_RISK * dd_scalar * cooldown_scalar
+                
+                size_ideal_risco = risk_usd / dist_pct
+                margem_maxima_permitida = (banca * MAX_ACCOUNT_MARGIN) / MAX_POSICOES
+                pos_size = min(size_ideal_risco, margem_maxima_permitida * ALAVANCAGEM)
+                margem_alocada = pos_size / ALAVANCAGEM
+                
+                if margem_alocada > banca: continue 
+                banca -= margem_alocada 
+                
+                posicoes_abertas[symb] = {
+                    "symbol": symb, "strat": strat, "strat_type": strat_type, "side": side, 
+                    "entry": entry_price, "sl": sl_price, "trail_sl": sl_price, "tp_price": tp_price, 
+                    "size_usd": pos_size, "margem_usd": margem_alocada, "pyramid_count": 0, 
+                    "partial_taken": False
+                }
+                if len(posicoes_abertas) >= MAX_POSICOES: break
+
+    annual_stats[timestamps[-1].year]['end'] = banca
+
+    wins = [t['pnl_pct'] for t in historico_global if t['pnl_pct'] > 0]
+    losses = [abs(t['pnl_pct']) for t in historico_global if t['pnl_pct'] <= 0]
+    wr = len(wins) / len(historico_global) if historico_global else 0
+    avg_win = np.mean(wins) / BANCA_INICIAL if wins else 0
+    avg_loss = np.mean(losses) / BANCA_INICIAL if losses else 0
+    
+    if avg_loss > 0:
+        expectancy_r = (avg_win / avg_loss * wr) - (1 - wr)
+    else:
+        expectancy_r = 0
+
+    print("\n" + "="*65)
+    print(f"📊 RELATÓRIO V3700 (THE ROBUST WALK-FORWARD ENGINE)")
+    print("="*65)
+    lucro_total = banca - BANCA_INICIAL
+    roi_total = (lucro_total / BANCA_INICIAL) * 100
+    print(f"Banca Inicial: ${BANCA_INICIAL:.2f}")
+    print(f"Banca Final:   ${banca:.2f} ({roi_total:.2f}% ROI)")
+    print(f"Expectancy:    {expectancy_r:.2f}R por Trade")
+    print("-" * 65)
+    print("🔎 TELEMETRIA DO PESSIMISMO INSTITUCIONAL:")
+    print(f" - Execuções Tóxicas (Slippage Ruim): {diagnostics['toxic_fills_executed']}")
+    print(f" - Fades Descartados (Missed Fill)  : {diagnostics['missed_limit_fill']}")
+    print(f" - Stops Otimistas Destruídos       : {diagnostics['pessimistic_intrabar_stops']}")
+    print("-" * 65)
+    print(f"{'ANO':<6} | {'INÍCIO ($)':<12} | {'FIM ($)':<12} | {'TRADES':<8} | {'WINRATE':<8}")
+    print("-" * 65)
+    for year in range(2020, 2027):
+        s = annual_stats[year]
+        if s['start'] == 0 or s['trades'] == 0: continue
+        wr = (s['wins'] / s['trades']) * 100
+        print(f"{year:<6} | {s['start']:<12.2f} | {s['end']:<12.2f} | {s['trades']:<8} | {wr:.1f}%")
+    print("="*65)
+
+    if len(historico_global) > 10:
+        print("\n☢️ INICIANDO BLOCK BOOTSTRAP MONTE CARLO (2.000 SIMULAÇÕES) ☢️")
+        trade_returns_pct = [t['pnl_pct'] for t in historico_global]
+        mc_stress = monte_carlo_block_bootstrap(trade_returns_pct, BANCA_INICIAL, sims=2000)
+        
+        print("\n" + "="*65)
+        print("🎯 RESULTADO DO TESTE DE STRESS INSTITUCIONAL")
+        print("="*65)
+        print(f"Equity Mediana Final  : ${mc_stress['median_final']:.2f}")
+        print(f"Pior Cenário Possível : ${mc_stress['worst_final']:.2f}")
+        print(f"Drawdown Mediano      : {mc_stress['median_dd']*100:.1f}%")
+        print(f"Pior Drawdown Absoluto: {mc_stress['worst_dd']*100:.1f}%")
+        print("-" * 65)
+        ruin = mc_stress['ruin_prob'] * 100
+        if ruin < 5.0:
+            print(f"🟢 APROVADO: Probabilidade de Ruína ({ruin:.1f}%). Edge Blindado ao Caos.")
+        elif ruin <= 20.0:
+            print(f"🟡 CUIDADO: Probabilidade de Ruína ({ruin:.1f}%). Viável, mas requer atenção.")
+        else:
+            print(f"🔴 REPROVADO: Probabilidade de Ruína ({ruin:.1f}%). Não ative em live.")
+        print("="*65)
+
+if __name__ == "__main__":
+    run_backtest()
