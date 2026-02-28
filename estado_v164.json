@@ -1,7 +1,20 @@
 {
     "banca_atual": 59.43353832913505,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "WINTER TREND SHORT | ADX 48.9 > 20",
+        "entry": 81.22041320800781,
+        "tp": 81.7209954070196,
+        "sl": 81.66372044528885,
+        "size_usd": 8.915030749370256,
+        "initial_size_usd": 8.915030749370256,
+        "adds": 0,
+        "data": "27/02/2026 21:01:54"
+    },
     "historico_trades": [
         {
             "data": "19/02/2026 01:10:50",
