@@ -1,30 +1,8 @@
 {
-    "banca_atual": 58.48690435796544,
+    "banca_atual": 58.278165251139676,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "strat": "TREND",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "SUMMER TREND | ADX 24.4 > 20",
-        "entry": 66677.53125,
-        "tp": 66217.14161989692,
-        "sl": 66052.85915457642,
-        "size_usd": 17.54607130738963,
-        "initial_size_usd": 17.54607130738963,
-        "adds": 0,
-        "data": "02/03/2026 00:22:51"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "19/02/2026 06:12:51",
-            "symbol": "BTC-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "lucro": -0.01,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "19/02/2026 06:24:46",
             "symbol": "ETH-USD",
@@ -705,8 +683,22 @@
             "lucro": -0.11,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "02/03/2026 04:06:54",
+            "symbol": "BTC-USD",
+            "strat": "TREND",
+            "side": "buy",
+            "criterio": "SUMMER TREND | ADX 24.4 > 20",
+            "entrada": 66677.53125,
+            "saida": 66017.6484375,
+            "tp": 66217.14161989692,
+            "sl": 66052.85915457642,
+            "lucro": -0.21,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "02/03/2026",
-    "pnl_hoje": -0.10709011500321541
+    "pnl_hoje": -0.31582922182898326
 }
