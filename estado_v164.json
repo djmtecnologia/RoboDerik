@@ -1,35 +1,8 @@
 {
-    "banca_atual": 57.91543969106021,
+    "banca_atual": 57.93497788744435,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "strat": "TRAP",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
-        "entry": 66500.1796875,
-        "tp": 66117.55279263532,
-        "sl": 66084.98956860304,
-        "size_usd": 8.68731595365903,
-        "initial_size_usd": 8.68731595365903,
-        "adds": 0,
-        "data": "02/03/2026 11:45:53"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "19/02/2026 14:37:51",
-            "symbol": "BTC-USD",
-            "strat": "TRAP",
-            "side": "sell",
-            "criterio": "TRAP TOPO | Toque BB Superior",
-            "entrada": 66912.484375,
-            "saida": 66511.9140625,
-            "tp": 66542.94675632013,
-            "sl": 67513.24609821528,
-            "lucro": 0.04,
-            "motivo": "\u2705 TP Trap (Alvo Atingido)",
-            "adds": 0
-        },
         {
             "data": "19/02/2026 14:39:53",
             "symbol": "SOL-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.1,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "02/03/2026 11:49:56",
+            "symbol": "BTC-USD",
+            "strat": "TRAP",
+            "side": "buy",
+            "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+            "entrada": 66500.1796875,
+            "saida": 66782.7421875,
+            "tp": 66117.55279263532,
+            "sl": 66084.98956860304,
+            "lucro": 0.02,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "02/03/2026",
-    "pnl_hoje": -0.6785547819084495
+    "pnl_hoje": -0.6590165855243098
 }
