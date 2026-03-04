@@ -7,12 +7,12 @@
         "side": "buy",
         "macro": "SUMMER",
         "criterio": "SUMMER TREND | ADX 20.1 > 20",
-        "entry": 68958.171875,
+        "entry": 70708.484375,
         "tp": 68154.9402030494,
-        "sl": 68452.43143337127,
-        "size_usd": 17.426354836259634,
+        "sl": 70115.36762663226,
+        "size_usd": 34.85270967251927,
         "initial_size_usd": 17.426354836259634,
-        "adds": 0,
+        "adds": 1,
         "data": "04/03/2026 04:46:51"
     },
     "historico_trades": [
