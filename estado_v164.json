@@ -1,7 +1,20 @@
 {
     "banca_atual": 58.155814106576365,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BNB-USD",
+        "strat": "TRAP",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+        "entry": 651.447509765625,
+        "tp": 655.8826132439963,
+        "sl": 647.6081299424933,
+        "size_usd": 8.723372115986454,
+        "initial_size_usd": 8.723372115986454,
+        "adds": 0,
+        "data": "05/03/2026 12:47:52"
+    },
     "historico_trades": [
         {
             "data": "21/02/2026 22:52:50",
