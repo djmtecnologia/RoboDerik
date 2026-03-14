@@ -1,35 +1,8 @@
 {
-    "banca_atual": 56.34382436427006,
+    "banca_atual": 56.297023144164065,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "ADA-USD",
-        "strat": "TREND",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "WINTER TREND SHORT | ADX 21.6 > 20",
-        "entry": 0.25923892855644226,
-        "tp": 0.2605546205322288,
-        "sl": 0.25997670501673026,
-        "size_usd": 8.451573654640509,
-        "initial_size_usd": 8.451573654640509,
-        "adds": 0,
-        "data": "14/03/2026 15:31:56"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "03/03/2026 12:43:52",
-            "symbol": "ADA-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 20.9 > 20",
-            "entrada": 0.27427759766578674,
-            "saida": 0.26564252376556396,
-            "tp": 0.27752669148405296,
-            "sl": 0.27665482804607494,
-            "lucro": 0.26,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "04/03/2026 00:30:56",
             "symbol": "BTC-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.04,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "14/03/2026 18:53:53",
+            "symbol": "ADA-USD",
+            "strat": "TREND",
+            "side": "sell",
+            "criterio": "WINTER TREND SHORT | ADX 21.6 > 20",
+            "entrada": 0.25923892855644226,
+            "saida": 0.2601560056209564,
+            "tp": 0.2605546205322288,
+            "sl": 0.25997670501673026,
+            "lucro": -0.05,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "14/03/2026",
-    "pnl_hoje": -0.1926480873834397
+    "pnl_hoje": -0.23944930748943577
 }
