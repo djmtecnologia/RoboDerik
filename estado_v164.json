@@ -1,7 +1,20 @@
 {
     "banca_atual": 56.5364724516535,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "strat": "TRAP",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+        "entry": 2092.99560546875,
+        "tp": 2116.7504062683956,
+        "sl": 2076.8016246024904,
+        "size_usd": 8.480470867748025,
+        "initial_size_usd": 8.480470867748025,
+        "adds": 0,
+        "data": "13/03/2026 21:17:54"
+    },
     "historico_trades": [
         {
             "data": "02/03/2026 10:53:54",
