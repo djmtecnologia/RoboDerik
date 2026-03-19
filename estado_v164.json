@@ -1,35 +1,8 @@
 {
-    "banca_atual": 57.878229602761095,
+    "banca_atual": 57.784638481882006,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "SOL-USD",
-        "strat": "TREND",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "WINTER TREND SHORT | ADX 34.7 > 20",
-        "entry": 87.87039184570312,
-        "tp": 88.08175563252169,
-        "sl": 88.53173528853947,
-        "size_usd": 8.681734440414164,
-        "initial_size_usd": 8.681734440414164,
-        "adds": 0,
-        "data": "19/03/2026 14:27:52"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "07/03/2026 11:42:52",
-            "symbol": "ADA-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 20.2 > 20",
-            "entrada": 0.2526724636554718,
-            "saida": 0.25447264313697815,
-            "tp": 0.25768755176437,
-            "sl": 0.2541085625563573,
-            "lucro": -0.08,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "07/03/2026 21:06:50",
             "symbol": "SOL-USD",
@@ -715,8 +688,22 @@
             "lucro": 0.06,
             "motivo": "\u2705 TP Fast (EMA20)",
             "adds": 0
+        },
+        {
+            "data": "19/03/2026 16:09:51",
+            "symbol": "SOL-USD",
+            "strat": "TREND",
+            "side": "sell",
+            "criterio": "WINTER TREND SHORT | ADX 34.7 > 20",
+            "entrada": 87.87039184570312,
+            "saida": 88.64191436767578,
+            "tp": 88.08175563252169,
+            "sl": 88.53173528853947,
+            "lucro": -0.09,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "19/03/2026",
-    "pnl_hoje": -0.19690819862107395
+    "pnl_hoje": -0.2904993195001646
 }
