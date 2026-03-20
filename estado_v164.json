@@ -1,35 +1,8 @@
 {
-    "banca_atual": 57.556092117616124,
+    "banca_atual": 57.56923289196278,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
-        "entry": 70608.0703125,
-        "tp": 70231.55597798157,
-        "sl": 70978.74719890315,
-        "size_usd": 8.633413817642419,
-        "initial_size_usd": 8.633413817642419,
-        "adds": 0,
-        "data": "20/03/2026 00:47:51"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "08/03/2026 21:13:49",
-            "symbol": "BTC-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 25.0 > 20",
-            "entrada": 65975.703125,
-            "saida": 66389.53125,
-            "tp": 67136.45491013258,
-            "sl": 66314.20175970338,
-            "lucro": -0.07,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "09/03/2026 00:02:52",
             "symbol": "BTC-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.08,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "20/03/2026 03:43:51",
+            "symbol": "BTC-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+            "entrada": 70608.0703125,
+            "saida": 70359.3828125,
+            "tp": 70231.55597798157,
+            "sl": 70978.74719890315,
+            "lucro": 0.01,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "20/03/2026",
-    "pnl_hoje": -0.08309404261313716
+    "pnl_hoje": -0.06995326826648744
 }
