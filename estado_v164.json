@@ -1,7 +1,20 @@
 {
     "banca_atual": 57.20088332672597,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BNB-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "WINTER TREND SHORT | ADX 20.3 > 20",
+        "entry": 624.6664428710938,
+        "tp": 626.0902247218141,
+        "sl": 627.3497743411966,
+        "size_usd": 8.580132499008895,
+        "initial_size_usd": 8.580132499008895,
+        "adds": 0,
+        "data": "23/03/2026 05:32:55"
+    },
     "historico_trades": [
         {
             "data": "11/03/2026 01:34:52",
