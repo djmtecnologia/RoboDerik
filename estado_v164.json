@@ -1,7 +1,20 @@
 {
     "banca_atual": 56.89437916003676,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "strat": "TRAP",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+        "entry": 91.5632553100586,
+        "tp": 92.16477261304188,
+        "sl": 90.9642577487218,
+        "size_usd": 8.534156874005514,
+        "initial_size_usd": 8.534156874005514,
+        "adds": 0,
+        "data": "25/03/2026 12:32:54"
+    },
     "historico_trades": [
         {
             "data": "13/03/2026 21:00:49",
