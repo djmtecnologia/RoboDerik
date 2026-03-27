@@ -1,35 +1,8 @@
 {
-    "banca_atual": 56.56709258500484,
+    "banca_atual": 56.52473902054022,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BNB-USD",
-        "strat": "TREND",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "WINTER TREND SHORT | ADX 20.4 > 20",
-        "entry": 627.0728149414062,
-        "tp": 628.5016461081677,
-        "sl": 628.8820690600487,
-        "size_usd": 8.485063887750727,
-        "initial_size_usd": 8.485063887750727,
-        "adds": 0,
-        "data": "27/03/2026 01:47:56"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "15/03/2026 10:11:48",
-            "symbol": "ETH-USD",
-            "strat": "TREND",
-            "side": "buy",
-            "criterio": "SUMMER TREND | ADX 30.1 > 20",
-            "entrada": 2090.82470703125,
-            "saida": 2100.213623046875,
-            "tp": 2081.79411495783,
-            "sl": 2084.0620057245765,
-            "lucro": 0.04,
-            "motivo": "\u2705 TP Deep Trend (EMA50)",
-            "adds": 0
-        },
         {
             "data": "15/03/2026 14:56:47",
             "symbol": "ADA-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.06,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "27/03/2026 02:18:51",
+            "symbol": "BNB-USD",
+            "strat": "TREND",
+            "side": "sell",
+            "criterio": "WINTER TREND SHORT | ADX 20.4 > 20",
+            "entrada": 627.0728149414062,
+            "saida": 628.94873046875,
+            "tp": 628.5016461081677,
+            "sl": 628.8820690600487,
+            "lucro": -0.04,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "27/03/2026",
-    "pnl_hoje": 0.0
+    "pnl_hoje": -0.04235356446462443
 }
