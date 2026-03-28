@@ -1,7 +1,20 @@
 {
     "banca_atual": 56.54327917363241,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BTC-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+        "entry": 66992.828125,
+        "tp": 66449.93520421887,
+        "sl": 67308.3750076521,
+        "size_usd": 8.481491876044862,
+        "initial_size_usd": 8.481491876044862,
+        "adds": 0,
+        "data": "28/03/2026 12:32:53"
+    },
     "historico_trades": [
         {
             "data": "17/03/2026 10:40:59",
