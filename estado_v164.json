@@ -1,35 +1,8 @@
 {
-    "banca_atual": 56.43614006257492,
+    "banca_atual": 56.37894448318419,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "ETH-USD",
-        "strat": "TRAP",
-        "side": "buy",
-        "macro": "WINTER",
-        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
-        "entry": 2009.509033203125,
-        "tp": 1995.936396835576,
-        "sl": 2000.177376711,
-        "size_usd": 8.465421009386239,
-        "initial_size_usd": 8.465421009386239,
-        "adds": 0,
-        "data": "29/03/2026 21:29:51"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "18/03/2026 18:15:51",
-            "symbol": "BNB-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 29.8 > 20",
-            "entrada": 658.581787109375,
-            "saida": 651.4683227539062,
-            "tp": 669.9765461394074,
-            "sl": 661.6070529116407,
-            "lucro": 0.08,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "19/03/2026 04:17:53",
             "symbol": "SOL-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.06,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "29/03/2026 21:39:51",
+            "symbol": "ETH-USD",
+            "strat": "TRAP",
+            "side": "buy",
+            "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+            "entrada": 2009.509033203125,
+            "saida": 1999.9510498046875,
+            "tp": 1995.936396835576,
+            "sl": 2000.177376711,
+            "lucro": -0.06,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "29/03/2026",
-    "pnl_hoje": -0.1409241417472652
+    "pnl_hoje": -0.198119721137994
 }
