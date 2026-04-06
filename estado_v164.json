@@ -1,7 +1,20 @@
 {
     "banca_atual": 53.92500404690397,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ADA-USD",
+        "strat": "TRAP",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+        "entry": 0.25082334876060486,
+        "tp": 0.25315873436706915,
+        "sl": 0.24991788390037345,
+        "size_usd": 8.088750607035596,
+        "initial_size_usd": 8.088750607035596,
+        "adds": 0,
+        "data": "06/04/2026 19:16:53"
+    },
     "historico_trades": [
         {
             "data": "27/03/2026 12:40:55",
