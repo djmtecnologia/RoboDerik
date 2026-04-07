@@ -1,35 +1,8 @@
 {
-    "banca_atual": 53.54294242181829,
+    "banca_atual": 53.46742956443896,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BNB-USD",
-        "strat": "TREND",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "SUMMER TREND | ADX 30.5 > 20",
-        "entry": 603.8488159179688,
-        "tp": 601.0244252446568,
-        "sl": 602.2441140438035,
-        "size_usd": 16.062882726545485,
-        "initial_size_usd": 16.062882726545485,
-        "adds": 0,
-        "data": "07/04/2026 07:14:57"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "29/03/2026 17:24:50",
-            "symbol": "BNB-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 27.5 > 20",
-            "entrada": 615.171142578125,
-            "saida": 610.468994140625,
-            "tp": 616.4079226013814,
-            "sl": 616.2097767971048,
-            "lucro": 0.05,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "29/03/2026 18:38:55",
             "symbol": "ADA-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.1,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "07/04/2026 07:30:54",
+            "symbol": "BNB-USD",
+            "strat": "TREND",
+            "side": "buy",
+            "criterio": "SUMMER TREND | ADX 30.5 > 20",
+            "entrada": 603.8488159179688,
+            "saida": 602.2177734375,
+            "tp": 601.0244252446568,
+            "sl": 602.2441140438035,
+            "lucro": -0.08,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "07/04/2026",
-    "pnl_hoje": -0.0930248936550707
+    "pnl_hoje": -0.1685377510344005
 }
