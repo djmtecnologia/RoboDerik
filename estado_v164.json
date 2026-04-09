@@ -1,35 +1,8 @@
 {
-    "banca_atual": 53.22404598866982,
+    "banca_atual": 53.12622362879916,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "ADA-USD",
-        "strat": "TREND",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "SUMMER TREND | ADX 23.2 > 20",
-        "entry": 0.25103145837783813,
-        "tp": 0.25087636987940043,
-        "sl": 0.25004340825319615,
-        "size_usd": 15.967213796600946,
-        "initial_size_usd": 15.967213796600946,
-        "adds": 0,
-        "data": "09/04/2026 05:49:54"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "30/03/2026 14:19:51",
-            "symbol": "ETH-USD",
-            "strat": "TREND",
-            "side": "buy",
-            "criterio": "SUMMER TREND | ADX 36.3 > 20",
-            "entrada": 2070.80859375,
-            "saida": 2054.017822265625,
-            "tp": 2049.4436738450613,
-            "sl": 2056.227974957513,
-            "lucro": -0.17,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "30/03/2026 18:23:52",
             "symbol": "ETH-USD",
@@ -715,8 +688,22 @@
             "lucro": 0.01,
             "motivo": "\u2705 TP Fast (EMA20)",
             "adds": 0
+        },
+        {
+            "data": "09/04/2026 06:05:52",
+            "symbol": "ADA-USD",
+            "strat": "TREND",
+            "side": "buy",
+            "criterio": "SUMMER TREND | ADX 23.2 > 20",
+            "entrada": 0.25103145837783813,
+            "saida": 0.24999558925628662,
+            "tp": 0.25087636987940043,
+            "sl": 0.25004340825319615,
+            "lucro": -0.1,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "09/04/2026",
-    "pnl_hoje": 0.009929647030394572
+    "pnl_hoje": -0.08789271284026419
 }
