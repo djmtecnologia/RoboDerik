@@ -1,35 +1,8 @@
 {
-    "banca_atual": 52.3548610313733,
+    "banca_atual": 52.27335571878486,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "SOL-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
-        "entry": 82.62274932861328,
-        "tp": 82.09206915743013,
-        "sl": 82.95979456929011,
-        "size_usd": 7.8532291547059945,
-        "initial_size_usd": 7.8532291547059945,
-        "adds": 0,
-        "data": "13/04/2026 10:46:52"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "02/04/2026 11:14:51",
-            "symbol": "ETH-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 54.0 > 20",
-            "entrada": 2052.493408203125,
-            "saida": 2040.8380126953125,
-            "tp": 2059.8333199086906,
-            "sl": 2066.729949423982,
-            "lucro": 0.03,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "02/04/2026 11:36:53",
             "symbol": "SOL-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.11,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "13/04/2026 10:53:57",
+            "symbol": "SOL-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+            "entrada": 82.62274932861328,
+            "saida": 83.31501007080078,
+            "tp": 82.09206915743013,
+            "sl": 82.95979456929011,
+            "lucro": -0.08,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "13/04/2026",
-    "pnl_hoje": -0.11175447194574835
+    "pnl_hoje": -0.19325978453417866
 }
