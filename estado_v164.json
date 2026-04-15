@@ -1,7 +1,20 @@
 {
     "banca_atual": 51.64737930991647,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ADA-USD",
+        "strat": "TRAP",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+        "entry": 0.24169999361038208,
+        "tp": 0.24073008837367366,
+        "sl": 0.24346740473157888,
+        "size_usd": 7.74710689648747,
+        "initial_size_usd": 7.74710689648747,
+        "adds": 0,
+        "data": "15/04/2026 10:33:42"
+    },
     "historico_trades": [
         {
             "data": "04/04/2026 13:49:49",
