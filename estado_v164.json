@@ -1,7 +1,20 @@
 {
     "banca_atual": 51.52754430948981,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BTC-USD",
+        "strat": "TRAP",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+        "entry": 74435.0234375,
+        "tp": 74761.31145380814,
+        "sl": 74093.24934815864,
+        "size_usd": 7.729131646423472,
+        "initial_size_usd": 7.729131646423472,
+        "adds": 0,
+        "data": "16/04/2026 07:36:56"
+    },
     "historico_trades": [
         {
             "data": "05/04/2026 13:01:50",
