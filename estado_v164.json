@@ -1,35 +1,8 @@
 {
-    "banca_atual": 51.52754430948981,
+    "banca_atual": 51.54254201218593,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "BTC-USD",
-        "strat": "TRAP",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
-        "entry": 74435.0234375,
-        "tp": 74761.31145380814,
-        "sl": 74093.24934815864,
-        "size_usd": 7.729131646423472,
-        "initial_size_usd": 7.729131646423472,
-        "adds": 0,
-        "data": "16/04/2026 07:36:56"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "05/04/2026 13:01:50",
-            "symbol": "BTC-USD",
-            "strat": "TREND",
-            "side": "buy",
-            "criterio": "SUMMER TREND | ADX 21.1 > 20",
-            "entrada": 67427.8203125,
-            "saida": 67270.234375,
-            "tp": 66950.82947014307,
-            "sl": 67282.36181522306,
-            "lucro": -0.07,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "05/04/2026 19:14:51",
             "symbol": "ETH-USD",
@@ -715,8 +688,22 @@
             "lucro": 0.11,
             "motivo": "\u2705 TP Deep Trend (EMA50)",
             "adds": 0
+        },
+        {
+            "data": "16/04/2026 09:02:56",
+            "symbol": "BTC-USD",
+            "strat": "TRAP",
+            "side": "buy",
+            "criterio": "TRAP FUNDO | Rejei\u00e7\u00e3o BB Inferior",
+            "entrada": 74435.0234375,
+            "saida": 74728.328125,
+            "tp": 74761.31145380814,
+            "sl": 74093.24934815864,
+            "lucro": 0.01,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "16/04/2026",
-    "pnl_hoje": 0.11402192387827467
+    "pnl_hoje": 0.12901962657439656
 }
