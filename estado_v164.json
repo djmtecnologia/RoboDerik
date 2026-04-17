@@ -1,35 +1,8 @@
 {
-    "banca_atual": 51.045337904551694,
+    "banca_atual": 51.19935330994599,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "SOL-USD",
-        "strat": "TREND",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "SUMMER TREND | ADX 22.8 > 20",
-        "entry": 88.20999908447264,
-        "tp": 85.1564269919213,
-        "sl": 87.02459149836089,
-        "size_usd": 30.627202742731015,
-        "initial_size_usd": 15.313601371365507,
-        "adds": 1,
-        "data": "16/04/2026 12:10:05"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "05/04/2026 22:46:49",
-            "symbol": "BTC-USD",
-            "strat": "TREND",
-            "side": "buy",
-            "criterio": "SUMMER TREND | ADX 27.9 > 20",
-            "entrada": 68978.9140625,
-            "saida": 68792.640625,
-            "tp": 67153.57430694312,
-            "sl": 68796.65629305453,
-            "lucro": -0.08,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "06/04/2026 19:07:50",
             "symbol": "BTC-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.14,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "17/04/2026 17:30:55",
+            "symbol": "SOL-USD",
+            "strat": "TREND",
+            "side": "buy",
+            "criterio": "SUMMER TREND | ADX 22.8 > 20",
+            "entrada": 88.20999908447264,
+            "saida": 88.83000183105469,
+            "tp": 85.1564269919213,
+            "sl": 87.02459149836089,
+            "lucro": 0.15,
+            "motivo": "\u2705 TP Deep Trend (EMA50)",
+            "adds": 1
         }
     ],
     "data_hoje": "17/04/2026",
-    "pnl_hoje": 0.0
+    "pnl_hoje": 0.15401540539429975
 }
