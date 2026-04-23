@@ -1,35 +1,8 @@
 {
-    "banca_atual": 50.041185917471076,
+    "banca_atual": 49.96585576370874,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "ETH-USD",
-        "strat": "TREND",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "WINTER TREND SHORT | ADX 20.5 > 20",
-        "entry": 2291.0,
-        "tp": 2327.1068841776464,
-        "sl": 2309.015138327776,
-        "size_usd": 7.506177887620661,
-        "initial_size_usd": 7.506177887620661,
-        "adds": 0,
-        "data": "23/04/2026 14:40:49"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "10/04/2026 12:50:55",
-            "symbol": "BTC-USD",
-            "strat": "TREND",
-            "side": "buy",
-            "criterio": "SUMMER TREND | ADX 23.7 > 20",
-            "entrada": 72978.0,
-            "saida": 72594.0390625,
-            "tp": 72011.95261927097,
-            "sl": 72601.06737672599,
-            "lucro": -0.12,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "11/04/2026 03:09:52",
             "symbol": "SOL-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.13,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "23/04/2026 14:55:51",
+            "symbol": "ETH-USD",
+            "strat": "TREND",
+            "side": "sell",
+            "criterio": "WINTER TREND SHORT | ADX 20.5 > 20",
+            "entrada": 2291.0,
+            "saida": 2309.409912109375,
+            "tp": 2327.1068841776464,
+            "sl": 2309.015138327776,
+            "lucro": -0.08,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "23/04/2026",
-    "pnl_hoje": -0.2624726197965369
+    "pnl_hoje": -0.3378027735588714
 }
