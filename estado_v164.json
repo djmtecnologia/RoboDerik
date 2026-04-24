@@ -1,35 +1,8 @@
 {
-    "banca_atual": 49.663222841549846,
+    "banca_atual": 49.6836408051982,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "ETH-USD",
-        "strat": "TRAP",
-        "side": "sell",
-        "macro": "WINTER",
-        "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
-        "entry": 2326.590087890625,
-        "tp": 2316.6082578373853,
-        "sl": 2338.5273160907655,
-        "size_usd": 7.449483426232477,
-        "initial_size_usd": 7.449483426232477,
-        "adds": 0,
-        "data": "24/04/2026 08:06:54"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "12/04/2026 17:39:54",
-            "symbol": "BNB-USD",
-            "strat": "TREND",
-            "side": "sell",
-            "criterio": "WINTER TREND SHORT | ADX 28.8 > 20",
-            "entrada": 602.41455078125,
-            "saida": 594.112548828125,
-            "tp": 608.5718724519515,
-            "sl": 603.7994738944369,
-            "lucro": 0.09,
-            "motivo": "\u2705 TP Fast (EMA20)",
-            "adds": 0
-        },
         {
             "data": "12/04/2026 19:03:51",
             "symbol": "ETH-USD",
@@ -715,8 +688,22 @@
             "lucro": -0.08,
             "motivo": "\u26d4 STOP LOSS",
             "adds": 0
+        },
+        {
+            "data": "24/04/2026 10:47:52",
+            "symbol": "ETH-USD",
+            "strat": "TRAP",
+            "side": "sell",
+            "criterio": "TRAP TOPO | Rejei\u00e7\u00e3o BB Superior",
+            "entrada": 2326.590087890625,
+            "saida": 2315.56005859375,
+            "tp": 2316.6082578373853,
+            "sl": 2338.5273160907655,
+            "lucro": 0.02,
+            "motivo": "\u2705 TP Trap",
+            "adds": 0
         }
     ],
     "data_hoje": "24/04/2026",
-    "pnl_hoje": -0.2203656435858243
+    "pnl_hoje": -0.19994767993746965
 }
