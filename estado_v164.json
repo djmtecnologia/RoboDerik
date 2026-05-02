@@ -1,7 +1,20 @@
 {
     "banca_atual": 48.62101967491357,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BTC-USD",
+        "strat": "TREND",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "SUMMER TREND | ADX 25.8 > 20",
+        "entry": 78557.296875,
+        "tp": 78299.67913243336,
+        "sl": 78380.47162605342,
+        "size_usd": 14.58630590247407,
+        "initial_size_usd": 14.58630590247407,
+        "adds": 0,
+        "data": "02/05/2026 13:19:47"
+    },
     "historico_trades": [
         {
             "data": "19/04/2026 14:05:48",
