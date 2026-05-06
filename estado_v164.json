@@ -1,7 +1,20 @@
 {
     "banca_atual": 38.03638677454355,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "SOL-USD",
+        "strat": "TREND",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "SUMMER TREND | ADX 24.7 > 20",
+        "entry": 89.11000061035156,
+        "tp": 88.47618639429763,
+        "sl": 88.25232729263826,
+        "size_usd": 11.410916032363065,
+        "initial_size_usd": 11.410916032363065,
+        "adds": 0,
+        "data": "06/05/2026 14:21:56"
+    },
     "historico_trades": [
         {
             "data": "06/05/2026 06:56:54",
