@@ -1,7 +1,20 @@
 {
     "banca_atual": 41.29699389517065,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "strat": "TREND",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "SUMMER TREND | ADX 25.7 > 20",
+        "entry": 2411.159912109375,
+        "tp": 2376.487825074534,
+        "sl": 2393.7651798045263,
+        "size_usd": 12.389098168551195,
+        "initial_size_usd": 12.389098168551195,
+        "adds": 0,
+        "data": "06/05/2026 07:03:45"
+    },
     "historico_trades": [
         {
             "data": "26/04/2026 02:16:48",
