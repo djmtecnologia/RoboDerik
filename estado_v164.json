@@ -1,35 +1,8 @@
 {
-    "banca_atual": 47.771849390105736,
+    "banca_atual": 47.60909625878674,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": {
-        "symbol": "ADA-USD",
-        "strat": "TREND",
-        "side": "buy",
-        "macro": "SUMMER",
-        "criterio": "SUMMER TREND | ADX 21.9 > 20",
-        "entry": 0.2671999931335449,
-        "tp": 0.266633185792946,
-        "sl": 0.264903205885396,
-        "size_usd": 14.331554817031721,
-        "initial_size_usd": 14.331554817031721,
-        "adds": 0,
-        "data": "06/05/2026 21:04:06"
-    },
+    "posicao_aberta": null,
     "historico_trades": [
-        {
-            "data": "06/05/2026 09:59:50",
-            "symbol": "BTC-USD",
-            "strat": "TREND",
-            "side": "buy",
-            "criterio": "SUMMER TREND | ADX 37.0 > 20",
-            "entrada": 82405.46875,
-            "saida": 80937.359375,
-            "tp": 81777.21406159131,
-            "sl": 81970.86917722457,
-            "lucro": -0.2,
-            "motivo": "\u26d4 STOP LOSS",
-            "adds": 0
-        },
         {
             "data": "06/05/2026 10:28:54",
             "symbol": "ADA-USD",
@@ -715,8 +688,22 @@
             "lucro": 0.39,
             "motivo": "\u2705 TP Deep Trend (EMA50)",
             "adds": 0
+        },
+        {
+            "data": "06/05/2026 22:04:59",
+            "symbol": "ADA-USD",
+            "strat": "TREND",
+            "side": "buy",
+            "criterio": "SUMMER TREND | ADX 21.9 > 20",
+            "entrada": 0.2671999931335449,
+            "saida": 0.2646999955177307,
+            "tp": 0.266633185792946,
+            "sl": 0.264903205885396,
+            "lucro": -0.16,
+            "motivo": "\u26d4 STOP LOSS",
+            "adds": 0
         }
     ],
     "data_hoje": "06/05/2026",
-    "pnl_hoje": 0.3499734653919014
+    "pnl_hoje": 0.18722033407290883
 }
