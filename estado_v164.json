@@ -1,7 +1,20 @@
 {
     "banca_atual": 46.87675863050145,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "ETH-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "WINTER TREND SHORT | ADX 34.9 > 20",
+        "entry": 2251.77001953125,
+        "tp": 2262.535996955851,
+        "sl": 2265.9671913430966,
+        "size_usd": 7.0315137945752175,
+        "initial_size_usd": 7.0315137945752175,
+        "adds": 0,
+        "data": "15/05/2026 05:30:17"
+    },
     "historico_trades": [
         {
             "data": "06/05/2026 14:25:04",
