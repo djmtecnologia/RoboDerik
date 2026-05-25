@@ -1,7 +1,20 @@
 {
     "banca_atual": 47.05290414098429,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BNB-USD",
+        "strat": "TREND",
+        "side": "buy",
+        "macro": "SUMMER",
+        "criterio": "SUMMER TREND | ADX 49.0 > 20",
+        "entry": 671.0399780273438,
+        "tp": 661.9867760123179,
+        "sl": 668.0688550681513,
+        "size_usd": 14.115871242295286,
+        "initial_size_usd": 14.115871242295286,
+        "adds": 0,
+        "data": "25/05/2026 11:08:48"
+    },
     "historico_trades": [
         {
             "data": "06/05/2026 15:12:48",
