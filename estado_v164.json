@@ -1,7 +1,20 @@
 {
     "banca_atual": 49.34129762087586,
     "pico_banca": 60.12130417131568,
-    "posicao_aberta": null,
+    "posicao_aberta": {
+        "symbol": "BTC-USD",
+        "strat": "TREND",
+        "side": "sell",
+        "macro": "WINTER",
+        "criterio": "WINTER TREND SHORT | ADX 23.6 > 20",
+        "entry": 61727.76953125,
+        "tp": 61899.932038167564,
+        "sl": 62335.25853747087,
+        "size_usd": 7.401194643131378,
+        "initial_size_usd": 7.401194643131378,
+        "adds": 0,
+        "data": "10/06/2026 16:12:04"
+    },
     "historico_trades": [
         {
             "data": "06/05/2026 18:22:00",
